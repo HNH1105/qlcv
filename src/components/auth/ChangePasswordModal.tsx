@@ -59,7 +59,7 @@ export default function ChangePasswordModal({
           <div>
             <Label>Xác nhận mật khẩu mới</Label>
             <div className="relative">
-              <Input name="xacNhanMatKhauMoi" type={showPassword ? "text" : "password"}  />
+              <Input name="xacNhanMatKhauMoi" type={showPassword ? "text" : "password"} autoComplete="current-password" />
               <span
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"

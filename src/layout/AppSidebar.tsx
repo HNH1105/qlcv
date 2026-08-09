@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState,useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -27,7 +27,10 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
-
+// ==========================================================================================
+// ====================              MENU "QUẢN TRỊ" — GIỮ NGUYÊN          =================
+// ==========================================================================================
+// Chưa bắt đầu viết phần này — giữ nguyên làm tham khảo UI, chưa dọn lại tên/đường dẫn.
 const adminItems: NavItem[] = [
   {
     icon: <UserCircleIcon />,
@@ -39,46 +42,11 @@ const adminItems: NavItem[] = [
     name: "Quản lý danh mục",
     path: "/admin/danh-muc",
   },
-];
-
-const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
     subItems: [{ name: "Ecommerce", path: "/", pro: false }],
   },
-  // {
-  //   icon: <CalenderIcon />,
-  //   name: "Calendar",
-  //   path: "/calendar",
-  // },
-  {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
-  },
-
-  {
-    name: "Forms",
-    icon: <ListIcon />,
-    subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-  },
-  {
-    name: "Tables",
-    icon: <TableIcon />,
-    subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
-  },
-  // {
-  //   name: "Pages",
-  //   icon: <PageIcon />,
-  //   subItems: [
-  //     { name: "Blank Page", path: "/blank", pro: false },
-  //     { name: "404 Error", path: "/error-404", pro: false },
-  //   ],
-  // },
-];
-
-const othersItems: NavItem[] = [
   {
     icon: <PieChartIcon />,
     name: "Charts",
@@ -107,18 +75,104 @@ const othersItems: NavItem[] = [
       { name: "Sign Up", path: "/signup", pro: false },
     ],
   },
+  {
+    icon: <CalenderIcon />,
+    name: "Calendar",
+    path: "/calendar",
+  },
+  {
+    icon: <UserCircleIcon />,
+    name: "User Profile",
+    path: "/profile",
+  },
+  {
+    name: "Forms",
+    icon: <ListIcon />,
+    subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
+  },
+  {
+    name: "Tables",
+    icon: <TableIcon />,
+    subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
+  },
+  {
+    name: "Pages",
+    icon: <PageIcon />,
+    subItems: [
+      { name: "Blank Page", path: "/blank", pro: false },
+      { name: "404 Error", path: "/error-404", pro: false },
+    ],
+  },
 ];
+
+// ==========================================================================================
+// ====================              MENU "CÔNG VIỆC"                      =================
+// ==========================================================================================
+// Mỗi mục dẫn thẳng tới 1 TRANG DUY NHẤT — trang đó tự quản lý tab con "Nhập" / "Xem lại"
+// bên trong (giống bản Apps Script cũ dùng subTab), KHÔNG tách thành nhiều route riêng.
+// Lý do: sidebar gọn hơn nhiều (3 mục thay vì 8), và giữ đúng luồng thao tác người dùng
+// đã quen (chuyển tab tại chỗ, không load lại trang / mất ngữ cảnh tuần đang chọn).
+const navItems: NavItem[] = [
+  {
+    icon: <GridIcon />,
+    name: "Cá nhân",
+    subItems: [
+      { name: "Kế hoạch", path: "/ca-nhan/ke-hoach", pro: false },
+      { name: "Báo cáo", path: "/ca-nhan/bao-cao", pro: false },
+    ],
+  },
+  {
+    icon: <GridIcon />,
+    name: "Phòng",
+    subItems: [
+      { name: "Kế hoạch", path: "/phong/ke-hoach", pro: false },
+      { name: "Báo cáo", path: "/phong/bao-cao", pro: false },
+    ],
+  },
+  {
+    icon: <GridIcon />,
+    name: "Nhiệm vụ",
+    // Không có subItems: trang /nhiem-vu tự có tab "Danh sách" / "+ Tạo nhiệm vụ" bên trong,
+    // đúng như NhiemVu_Markup.html bản cũ (nvTabDS / nvTabTAO cùng 1 container).
+    path: "/nhiem-vu",
+  },
+];
+
+// ==========================================================================================
+// ====================              MENU "TRA CỨU"                        =================
+// ==========================================================================================
+const SearchItems: NavItem[] = [
+  {
+    icon: <GridIcon />,
+    name: "Tra cứu",
+    subItems: [
+      { name: "Kế hoạch Phòng", path: "/tra-cuu/ke-hoach-phong", pro: false },
+      { name: "Kế hoạch cá nhân", path: "/tra-cuu/ke-hoach-ca-nhan", pro: false },
+      { name: "Báo cáo cá nhân", path: "/tra-cuu/bao-cao-ca-nhan", pro: false },
+      { name: "Nhiệm vụ", path: "/tra-cuu/nhiem-vu", pro: false },
+    ],
+  },
+];
+
+// Tra theo menuType -> đúng mảng dữ liệu đang được render cho menuType đó. Dùng object thay vì
+// if/else rải rác để useEffect bên dưới không bao giờ lệch với những gì renderMenuItems() đang
+// hiển thị thật (lỗi cũ: useEffect tự dò theo biến "othersItems" trong khi màn hình lại render
+// "SearchItems" cho menuType "others" — 2 nguồn dữ liệu khác nhau nên tự-mở-submenu bị sai).
+type MenuType = "main" | "others" | "admin";
+const allMenus: Record<MenuType, NavItem[]> = {
+  main: navItems,
+  others: SearchItems,
+  admin: adminItems,
+};
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const user = useAuth();
-  const renderMenuItems = (
-    navItems: NavItem[],
-    menuType: "main" | "others" | "admin"
-  ) => (
+
+  const renderMenuItems = (items: NavItem[], menuType: MenuType) => (
     <ul className="flex flex-col gap-4">
-      {navItems.map((nav, index) => (
+      {items.map((nav, index) => (
         <li key={nav.name}>
           {nav.subItems ? (
             <button
@@ -240,7 +294,7 @@ const AppSidebar: React.FC = () => {
   );
 
   const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others" | "admin";
+    type: MenuType;
     index: number;
   } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
@@ -248,34 +302,28 @@ const AppSidebar: React.FC = () => {
   );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // const isActive = (path: string) => path === pathname;
-   const isActive = useCallback((path: string) => path === pathname, [pathname]);
+  const isActive = useCallback((path: string) => path === pathname, [pathname]);
 
   useEffect(() => {
-    // Check if the current path matches any submenu item
+    // Tự bung đúng submenu tương ứng khi vào thẳng 1 trang con bằng URL (VD: bookmark, F5,
+    // hoặc điều hướng từ nơi khác) — dò trên ĐÚNG dữ liệu đang render (allMenus), không dò
+    // trên biến rời rạc dễ lệch như trước.
     let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "others",
-                index,
-              });
-              submenuMatched = true;
-            }
-          });
-        }
+    (Object.keys(allMenus) as MenuType[]).forEach((menuType) => {
+      allMenus[menuType].forEach((nav, index) => {
+        nav.subItems?.forEach((subItem) => {
+          if (isActive(subItem.path)) {
+            setOpenSubmenu({ type: menuType, index });
+            submenuMatched = true;
+          }
+        });
       });
     });
 
-    // If no submenu item matches, close the open submenu
     if (!submenuMatched) {
       setOpenSubmenu(null);
     }
-  }, [pathname,isActive]);
+  }, [pathname, isActive]);
 
   useEffect(() => {
     // Set the height of the submenu items when the submenu is opened
@@ -290,7 +338,7 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others" | "admin") => {
+  const handleSubmenuToggle = (index: number, menuType: MenuType) => {
     setOpenSubmenu((prevOpenSubmenu) => {
       if (
         prevOpenSubmenu &&
@@ -310,8 +358,8 @@ const AppSidebar: React.FC = () => {
           isExpanded || isMobileOpen
             ? "w-[290px]"
             : isHovered
-            ? "w-[290px]"
-            : "w-[90px]"
+              ? "w-[290px]"
+              : "w-[90px]"
         }
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0`}
@@ -326,20 +374,24 @@ const AppSidebar: React.FC = () => {
         <Link href="/">
           {isExpanded || isHovered || isMobileOpen ? (
             <>
-              <Image
+              
+              <div className="flex items-center gap-3 text-[20px] font-semibold text-gray-900 dark:text-white">
+                <Image
                 className="dark:hidden"
-                src="/images/logo/logo.svg"
+                src="/images/logo/logo.png"
                 alt="Logo"
-                width={150}
+                width={40}
                 height={40}
               />
               <Image
                 className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
+               src="/images/logo/logo.png"
                 alt="Logo"
-                width={150}
+                width={40}
                 height={40}
               />
+                Hệ thống QLCV</div>
+              
             </>
           ) : (
             <Image
@@ -380,32 +432,32 @@ const AppSidebar: React.FC = () => {
                 }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
-                  "Nhiệm vụ"
+                  "Tra cứu"
                 ) : (
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(othersItems, "others")}
+              {renderMenuItems(SearchItems, "others")}
             </div>
-                {user?.isAdmin && (
-  <div className="">
-    <h2
-      className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-        !isExpanded && !isHovered
-          ? "lg:justify-center"
-          : "justify-start"
-      }`}
-    >
-      {isExpanded || isHovered || isMobileOpen ? (
-        "Quản trị"
-      ) : (
-        <HorizontaLDots />
-      )}
-    </h2>
-    {renderMenuItems(adminItems, "admin")}
-  </div>
-)}
-                
+
+            {user?.isAdmin && (
+              <div className="">
+                <h2
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                    !isExpanded && !isHovered
+                      ? "lg:justify-center"
+                      : "justify-start"
+                  }`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? (
+                    "Quản trị"
+                  ) : (
+                    <HorizontaLDots />
+                  )}
+                </h2>
+                {renderMenuItems(adminItems, "admin")}
+              </div>
+            )}
           </div>
         </nav>
         {/* {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null} */}
