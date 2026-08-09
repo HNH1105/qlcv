@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================================================================
+// ====================                     ENUM                          =================
+// ==========================================================================================
+
+enum Quyen {
+  USER
+  LANHDAOPHONG
+  LANHDAODONVI
+}
+
+enum GioiTinh {
+  NAM
+  NU
+  KHAC
+}
+
+enum LoaiGhiNhan {
+  KEHOACH
+  BAOCAO
+}
+
+enum CapDoKeHoach {
+  CANHAN
+  PHONG
+}
+
+// CHƯA CHỐT: HOATOC chưa được xác nhận có tồn tại trong dropdown selectNVUuTien thật hay không.
+// Giữ tạm trong enum vì thêm 1 giá trị sau này (ALTER TYPE ... ADD VALUE) dễ hơn nhiều so với việc
+// phải xoá bớt 1 giá trị đã có dữ liệu dùng — nhưng NÊN xác nhận trước khi đưa vào dùng thật ở form.
+enum MucDoUuTien {
+  THUONG
+  KHAN
+  HOATOC
+}
+
+// Đối chiếu 1:1 với NV_TRANGTHAI trong NhiemVu.gs — đã xác nhận khớp
+enum TrangThaiNhiemVu {
+  CHO_PHAN_CONG
+  DANGXULY
+  CHO_DUYET
+  HOANTHANH
+  TAMDUNG
+  HUY
+}
+
+// Đối chiếu 1:1 với các giá trị HanhDong dùng trong ghiLogNhiemVu() — đã xác nhận khớp
+enum HanhDongNhiemVu {
+  TAO_MOI
+  PHAN_CONG
+  CHUYEN_TIEP
+  CAP_NHAT_TIENDO
+  DONG_GOP_PHOIHOP
+  BAO_CAO_HOANTHANH
+  YEU_CAU_XULY_LAI
+  DUYET_HOANTHANH
+  MO_LAI
+  HUY
+  THAY_DOI_HAN
+  THAY_DOI_NGUOIXULY
+}
+
+// ==========================================================================================
+// ====================                DANH MỤC                           =================
+// ==========================================================================================
+
+model Phong {
+  maPhong  String  @id @map("ma_phong")
+  tenPhong String  @map("ten_phong")
+  thuTu    Int     @default(999) @map("thu_tu")
+  hoatDong Boolean @default(true) @map("hoat_dong")
+
+  nhanViens    NhanVien[]
+  keHoachTuans KeHoachTuan[]
+
+  nhiemVuChuTri  NhiemVu[]      @relation("NhiemVuPhongChuTri")
+  nhiemVuPhoiHop NhiemVuPhong[]
+
+  nhiemVuNguoiPhoiHop NhiemVuNguoiPhoiHop[] // snapshot phòng của người phối hợp tại thời điểm thêm
+
+  @@map("phong")
+}
+
+model NhanVien {
+  maNV        String    @id @map("ma_nv")
+  hoTen       String    @map("ho_ten")
+  maPhong     String    @map("ma_phong")
+  thuTu       Int       @default(999) @map("thu_tu")
+  chucVu      String?   @map("chuc_vu")
+  hoatDong    Boolean   @default(true) @map("hoat_dong")
+  quyen       Quyen     @default(USER) // vai trò NGHIỆP VỤ — KHÔNG dùng cho quyền quản trị hệ thống, xem TaiKhoan.isAdmin
+
+  ngaySinh    DateTime? @map("ngay_sinh") @db.Date
+  gioiTinh    GioiTinh? @map("gioi_tinh")
+  diaChi      String?   @map("dia_chi")
+  soDienThoai String?   @map("so_dien_thoai")
+  email       String?   @unique
+  anhDaiDien  String?   @map("anh_dai_dien")
+
+  taoLuc     DateTime @default(now()) @map("tao_luc")
+  capNhatLuc DateTime @updatedAt @map("cap_nhat_luc")
+
+  phong    Phong     @relation(fields: [maPhong], references: [maPhong])
+  taiKhoan TaiKhoan?
+
+  // Kế hoạch/Báo cáo tuần
+  keHoachTuans   KeHoachTuan[]        @relation("KeHoachNguoiLienQuan")
+  keHoachCapNhat KeHoachTuan[]        @relation("KeHoachNguoiCapNhat")
+  keHoachPhoiHop KeHoachTuanPhoiHop[]
+
+  // Nhiệm vụ
+  nhiemVuTao       NhiemVu[]             @relation("NhiemVuNguoiTao")
+  nhiemVuGiao      NhiemVu[]             @relation("NhiemVuNguoiGiao")
+  nhiemVuXuLyChinh NhiemVu[]             @relation("NhiemVuNguoiXuLy")
+  nhiemVuBaoCao    NhiemVu[]             @relation("NhiemVuNguoiBaoCao")
+  nhiemVuDuyet     NhiemVu[]             @relation("NhiemVuNguoiDuyet")
+  nhiemVuCapNhat   NhiemVu[]             @relation("NhiemVuNguoiCapNhat")
+  nhiemVuPhoiHop   NhiemVuNguoiPhoiHop[]
+  nhiemVuLogs      NhiemVuLog[]
+
+  @@index([maPhong, thuTu])
+  @@map("nhan_vien")
+}
+
+model TaiKhoan {
+  id              Int       @id @default(autoincrement())
+  maNV            String    @unique @map("ma_nv")
+  tenDangNhap     String    @unique @map("ten_dang_nhap")
+  matKhauHash     String    @map("mat_khau_hash")
+  isAdmin         Boolean   @default(false) @map("is_admin")
+  lanDangNhapCuoi DateTime? @map("lan_dang_nhap_cuoi")
+  taoLuc          DateTime  @default(now()) @map("tao_luc")
+
+  // ==== KHOÁ TÀI KHOẢN ====
+  biKhoa                   Boolean   @default(false) @map("bi_khoa") // dùng chung cho cả 2 trường hợp: admin khoá tay HOẶC hệ thống tự khoá do đăng nhập sai
+  soLanDangNhapSaiLienTiep  Int       @default(0) @map("so_lan_dang_nhap_sai_lien_tiep") // đếm dồn số lần sai LIÊN TIẾP gần nhất — reset về 0 ngay khi đăng nhập đúng 1 lần
+  khoaLuc                   DateTime? @map("khoa_luc")
+  lyDoKhoa                  String?   @map("ly_do_khoa") // VD: "Tự động khoá do đăng nhập sai 10 lần liên tiếp" hoặc lý do admin tự nhập khi khoá tay
+
+  nhanVien NhanVien @relation(fields: [maNV], references: [maNV], onDelete: Cascade)
+
+  @@map("tai_khoan")
+}
+// ==========================================================================================
+// ====================     KẾ HOẠCH / BÁO CÁO TUẦN (gộp CANHAN + PHONG)   =================
+// ==========================================================================================
+
+model KeHoachTuan {
+  id          Int          @id @default(autoincrement())
+  nam         Int
+  tuan        Int
+  loai        LoaiGhiNhan // KEHOACH | BAOCAO
+  capDo       CapDoKeHoach // CANHAN | PHONG
+  maPhong     String       @map("ma_phong")
+  maNV        String?      @map("ma_nv") // người liên quan / người nhập — bắt buộc có ý nghĩa khi capDo=CANHAN
+  noiDung     String       @map("noi_dung") @db.Text
+  ketQua      String?      @map("ket_qua") @db.Text
+  daHoanThanh Boolean      @default(false) @map("da_hoan_thanh")
+  ghiChu      String?      @map("ghi_chu") @db.Text
+
+  ghiChuPhoiHop String? @map("ghi_chu_phoi_hop") // ô text tự do (giữ nguyên công dụng cột PhoiHop cũ)
+
+  nguonId        Int?     @map("nguon_id") // chỉ dùng khi capDo=PHONG: trỏ về dòng CANHAN gốc lúc convert
+  nguoiCapNhatId String?  @map("nguoi_cap_nhat_id")
+  ngayCapNhat    DateTime @updatedAt @map("ngay_cap_nhat")
+  taoLuc         DateTime @default(now()) @map("tao_luc")
+
+  phong        Phong        @relation(fields: [maPhong], references: [maPhong])
+  nhanVien     NhanVien?    @relation("KeHoachNguoiLienQuan", fields: [maNV], references: [maNV])
+  nguoiCapNhat NhanVien?    @relation("KeHoachNguoiCapNhat", fields: [nguoiCapNhatId], references: [maNV])
+  nguon        KeHoachTuan? @relation("KeHoachConvert", fields: [nguonId], references: [id])
+  banChuyen    KeHoachTuan[] @relation("KeHoachConvert")
+
+  nguoiPhoiHop KeHoachTuanPhoiHop[] // chọn người cụ thể trong hệ thống — dùng song song với ghiChuPhoiHop
+
+  @@index([nam, tuan, loai, capDo])
+  @@index([maPhong, nam, tuan])
+  @@index([maNV, nam, tuan])
+  @@map("ke_hoach_tuan")
+}
+
+model KeHoachTuanPhoiHop {
+  id            Int    @id @default(autoincrement())
+  keHoachTuanId Int    @map("ke_hoach_tuan_id")
+  maNV          String @map("ma_nv")
+
+  keHoachTuan KeHoachTuan @relation(fields: [keHoachTuanId], references: [id], onDelete: Cascade)
+  nhanVien    NhanVien    @relation(fields: [maNV], references: [maNV])
+
+  @@unique([keHoachTuanId, maNV])
+  @@map("ke_hoach_tuan_phoi_hop")
+}
+
+// ==========================================================================================
+// ====================                  NHIỆM VỤ                         =================
+// ==========================================================================================
+
+model NhiemVu {
+  id             Int         @id @default(autoincrement())
+  tieuDe         String      @map("tieu_de")
+  noiDung        String?     @map("noi_dung") @db.Text
+  mucDoUuTien    MucDoUuTien @default(THUONG) @map("muc_do_uu_tien")
+  nguon          String?
+  vanBanLienQuan String?     @map("van_ban_lien_quan")
+  linkFile       String?     @map("link_file")
+
+  nguoiTaoId  String    @map("nguoi_tao_id")
+  nguoiGiaoId String    @map("nguoi_giao_id") // người chỉ đạo — mặc định = nguoiTaoId nếu không chọn khác
+  ngayGiao    DateTime  @default(now()) @map("ngay_giao")
+  hanXuLy     DateTime? @map("han_xu_ly") @db.Date
+
+  phongChuTriId    String  @map("phong_chu_tri_id") // NGUỒN SỰ THẬT DUY NHẤT cho phòng chủ trì
+  nguoiXuLyChinhId String? @map("nguoi_xu_ly_chinh_id")
+
+  trangThai      TrangThaiNhiemVu @default(CHO_PHAN_CONG) @map("trang_thai")
+  tienDoPhanTram Int              @default(0) @map("tien_do_phan_tram") // validate 0-100 ở tầng Server Action (Zod)
+  ketQua         String?          @map("ket_qua") @db.Text
+
+  nguoiBaoCaoHoanThanhId String?   @map("nguoi_bao_cao_hoan_thanh_id") // người báo cáo đã xong việc
+  nguoiDuyetId           String?   @map("nguoi_duyet_id")              // người duyệt xác nhận hoàn thành
+  thoiGianHoanThanh      DateTime? @map("thoi_gian_hoan_thanh")
+
+  ngayCapNhat    DateTime @updatedAt @map("ngay_cap_nhat")
+  nguoiCapNhatId String?  @map("nguoi_cap_nhat_id")
+
+  nguoiTao       NhanVien  @relation("NhiemVuNguoiTao", fields: [nguoiTaoId], references: [maNV])
+  nguoiGiao      NhanVien  @relation("NhiemVuNguoiGiao", fields: [nguoiGiaoId], references: [maNV])
+  phongChuTri    Phong     @relation("NhiemVuPhongChuTri", fields: [phongChuTriId], references: [maPhong])
+  nguoiXuLyChinh NhanVien? @relation("NhiemVuNguoiXuLy", fields: [nguoiXuLyChinhId], references: [maNV])
+  nguoiBaoCao    NhanVien? @relation("NhiemVuNguoiBaoCao", fields: [nguoiBaoCaoHoanThanhId], references: [maNV])
+  nguoiDuyet     NhanVien? @relation("NhiemVuNguoiDuyet", fields: [nguoiDuyetId], references: [maNV])
+  nguoiCapNhat   NhanVien? @relation("NhiemVuNguoiCapNhat", fields: [nguoiCapNhatId], references: [maNV])
+
+  phongPhoiHop NhiemVuPhong[]
+  nguoiPhoiHop NhiemVuNguoiPhoiHop[]
+  logs         NhiemVuLog[]
+
+  @@index([trangThai])
+  @@index([phongChuTriId])
+  @@index([nguoiXuLyChinhId])
+  @@index([hanXuLy])
+  @@map("nhiem_vu")
+}
+
+// Chỉ chứa PHÒNG PHỐI HỢP — phòng chủ trì đã có ở NhiemVu.phongChuTriId, không lưu trùng 2 nơi
+model NhiemVuPhong {
+  id        Int    @id @default(autoincrement())
+  nhiemVuId Int    @map("nhiem_vu_id")
+  maPhong   String @map("ma_phong")
+
+  nhiemVu NhiemVu @relation(fields: [nhiemVuId], references: [id], onDelete: Cascade)
+  phong   Phong   @relation(fields: [maPhong], references: [maPhong])
+
+  @@unique([nhiemVuId, maPhong])
+  @@map("nhiem_vu_phong")
+}
+
+model NhiemVuNguoiPhoiHop {
+  id        Int      @id @default(autoincrement())
+  nhiemVuId Int      @map("nhiem_vu_id")
+  maNV      String   @map("ma_nv")
+  maPhong   String?  @map("ma_phong") // snapshot phòng của người đó TẠI THỜI ĐIỂM thêm (NV có thể chuyển phòng sau)
+  ngayThem  DateTime @default(now()) @map("ngay_them")
+  ghiChu    String?  @map("ghi_chu")
+
+  nhiemVu  NhiemVu  @relation(fields: [nhiemVuId], references: [id], onDelete: Cascade)
+  nhanVien NhanVien @relation(fields: [maNV], references: [maNV])
+  phong    Phong?   @relation(fields: [maPhong], references: [maPhong])
+
+  @@unique([nhiemVuId, maNV])
+  @@map("nhiem_vu_nguoi_phoi_hop")
+}
+
+model NhiemVuLog {
+  id              Int             @id @default(autoincrement())
+  nhiemVuId       Int             @map("nhiem_vu_id")
+  thoiGian        DateTime        @default(now()) @map("thoi_gian")
+  hanhDong        HanhDongNhiemVu @map("hanh_dong")
+  nguoiThucHienId String          @map("nguoi_thuc_hien_id")
+  tuGiaTri        String?         @map("tu_gia_tri")  // maNV / maPhong / text cũ, tuỳ hành động
+  denGiaTri       String?         @map("den_gia_tri") // maNV / maPhong / text mới, tuỳ hành động
+  ghiChu          String?         @map("ghi_chu") @db.Text
+
+  nhiemVu       NhiemVu  @relation(fields: [nhiemVuId], references: [id], onDelete: Cascade)
+  nguoiThucHien NhanVien @relation(fields: [nguoiThucHienId], references: [maNV])
+
+  @@index([nhiemVuId, thoiGian])
+  @@map("nhiem_vu_log")
+}
