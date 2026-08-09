@@ -82,22 +82,23 @@ const AppHeader: React.FC = () => {
             )}
             {/* Cross Icon */}
           </button>
-
           <Link href="/" className="lg:hidden">
+             <div className="flex items-center gap-3 text-[20px] font-semibold text-gray-900 dark:text-white">
             <Image
-              width={154}
-              height={32}
+              width={30}
+              height={30}
               className="dark:hidden"
               src="./images/logo/logo-syt.svg"
               alt="Logo"
             />
             <Image
-              width={154}
-              height={32}
+              width={30}
+              height={30}
               className="hidden dark:block"
               src="./images/logo/logo-syt.svg"
               alt="Logo"
             />
+               Hệ thống QLCV</div>
           </Link>
 
           <button
