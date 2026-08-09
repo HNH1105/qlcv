@@ -4715,6 +4715,7 @@ __metadata:
     eslint: ^9.39.1
     eslint-config-next: 16.0.7
     flatpickr: ^4.6.13
+    jose: ^6.2.8
     next: ^16.1.6
     pg: ^8.22.0
     postcss: ^8.5.6
@@ -5343,6 +5344,13 @@ __metadata:
   bin:
     jiti: lib/jiti-cli.mjs
   checksum: e43d0859988f1f709a9a6c69833219ebdfe041fd2f7355a2a2151254c0c42b5a74de400f24d6b5d3d6689112fedae8be1ed4df29fcc1b891e8aa0992d33f3b16
+  languageName: node
+  linkType: hard
+
+"jose@npm:^6.2.8":
+  version: 6.2.8
+  resolution: "jose@npm:6.2.8"
+  checksum: 790de6c041b24e0e7f96a3ab8f6ed4d3d023272cdc5a17e764077c12715a7cde546366a9c126fc22f1dc22fe39a56f3ed990db8298681dbdb2df1a19975678f0
   languageName: node
   linkType: hard
 
