@@ -1,13 +1,23 @@
 "use client";
 
-import Image from "next/image";
 import React, { useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { useAuth } from "@/context/AuthContext";
 import { logoutAction } from "@/lib/auth/actions";
+import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
+
+// Lấy chữ cái đầu của TÊN (từ cuối trong họ tên đầy đủ) — theo đúng quy ước tiếng Việt.
+// VD: "Nguyễn Hoàng Huệ" -> "H"
+function getInitial(hoTen?: string): string {
+  if (!hoTen) return "?";
+  const parts = hoTen.trim().split(/\s+/);
+  const ten = parts[parts.length - 1] ?? "";
+  return ten.charAt(0).toUpperCase();
+}
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const user = useAuth();
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
@@ -25,8 +35,8 @@ export default function UserDropdown() {
         onClick={toggleDropdown}
         className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
       >
-        <span className="mr-3 overflow-hidden rounded-full h-11 w-11">
-          <Image width={44} height={44} src="/images/user/owner.jpg" alt="User" />
+        <span className="mr-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-semibold text-white">
+          {getInitial(user?.hoTen)}
         </span>
 
         <span className="block mr-1 font-medium text-theme-sm">
@@ -58,16 +68,51 @@ export default function UserDropdown() {
         onClose={closeDropdown}
         className="absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
       >
-        <div>
-          <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            {user?.hoTen}
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
+            {getInitial(user?.hoTen)}
           </span>
-          <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            {user?.tenPhong} · {user?.tenDangNhap}
-          </span>
+          <div>
+            <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
+              {user?.hoTen}
+            </span>
+            <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
+              {user?.tenPhong} · {user?.tenDangNhap}
+            </span>
+          </div>
         </div>
 
-        <form action={logoutAction} className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+        <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                closeDropdown();
+                setIsChangePasswordOpen(true);
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+            >
+              <svg
+                className="fill-gray-500 group-hover:fill-gray-700 dark:fill-gray-400 dark:group-hover:fill-gray-300"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2v-9a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm3 8V6a3 3 0 10-6 0v3h6zm-3 4a1.5 1.5 0 011.5 1.5v2a1.5 1.5 0 01-3 0v-2A1.5 1.5 0 0112 13z"
+                  fill=""
+                />
+              </svg>
+              Đổi mật khẩu
+            </button>
+          </li>
+        </ul>
+
+        <form action={logoutAction} className="pt-3">
           <button
             type="submit"
             className="flex w-full items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
@@ -91,6 +136,11 @@ export default function UserDropdown() {
           </button>
         </form>
       </Dropdown>
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 }

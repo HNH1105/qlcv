@@ -89,3 +89,47 @@ export async function logoutAction() {
   await deleteSession();
   redirect("/signin");
 }
+
+
+import { requireSession } from "./session";
+import { hashPassword } from "./password";
+
+export type ChangePasswordState = {
+  error?: string;
+  success?: boolean;
+};
+
+export async function changePasswordAction(
+  _prevState: ChangePasswordState | undefined,
+  formData: FormData
+): Promise<ChangePasswordState> {
+  const session = await requireSession(); // ném lỗi nếu chưa đăng nhập — đúng ý, vì action này chỉ gọi được từ trong app
+
+  const matKhauCu = String(formData.get("matKhauCu") || "");
+  const matKhauMoi = String(formData.get("matKhauMoi") || "");
+  const xacNhanMatKhauMoi = String(formData.get("xacNhanMatKhauMoi") || "");
+
+  if (!matKhauCu || !matKhauMoi || !xacNhanMatKhauMoi) {
+    return { error: "Vui lòng nhập đầy đủ thông tin" };
+  }
+  if (matKhauMoi.length < 6) {
+    return { error: "Mật khẩu mới phải có ít nhất 6 ký tự" };
+  }
+  if (matKhauMoi !== xacNhanMatKhauMoi) {
+    return { error: "Xác nhận mật khẩu mới không khớp" };
+  }
+
+  const taiKhoan = await prisma.taiKhoan.findUnique({ where: { maNV: session.maNV } });
+  if (!taiKhoan) return { error: "Không tìm thấy tài khoản" };
+
+  const dungMatKhauCu = await verifyPassword(matKhauCu, taiKhoan.matKhauHash);
+  if (!dungMatKhauCu) return { error: "Mật khẩu hiện tại không đúng" };
+
+  const matKhauMoiHash = await hashPassword(matKhauMoi);
+  await prisma.taiKhoan.update({
+    where: { id: taiKhoan.id },
+    data: { matKhauHash: matKhauMoiHash },
+  });
+
+  return { success: true };
+}
