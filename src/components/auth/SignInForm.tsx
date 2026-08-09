@@ -22,7 +22,7 @@ export default function SignInForm() {
               Đăng nhập
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Nhập tên đăng nhập và mật khẩu để vào hệ thống
+              Nhập tên đăng nhập và mật khẩu để vào hệ thống. Tên tài khoản là tài khoản ioffice, mk mặt định là Syt@2026. 
             </p>
           </div>
 
