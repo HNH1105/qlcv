@@ -6,12 +6,18 @@ import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Checkbox from "@/components/form/input/Checkbox";
 import Button from "@/components/ui/button/Button";
-import MultiSelect from "@/components/form/MultiSelect";
+import NguoiPhoiHopSelect from "./NguoiPhoiHopSelect";
 import { submitKeHoachCaNhan } from "@/lib/actions/ke-hoach";
 import { getNhanVienList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
-import { getWeekDateRangeLabel } from "@/lib/week";
+import {
+  getCurrentWeekInfo,
+  getWeekDateRangeLabel,
+  getTuanOptions,
+  parseTuanOptionValue,
+} from "@/lib/week";
 import { LoaiGhiNhan } from "@prisma/client";
+import { useToast } from "./ToastProvider";
 
 type NhanVien = { maNV: string; hoTen: string; maPhong: string };
 
@@ -25,18 +31,26 @@ export default function AddKeHoachBaoCaoModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
+  // nam/tuan truyền vào là tuần đang được xem trên board — dùng làm giá trị MẶC ĐỊNH cho dropdown
+  // tuần bên trong modal (tuần sau đối với Kế hoạch, tuần hiện tại đối với Báo cáo), người dùng
+  // vẫn có thể đổi sang tuần khác ngay trong modal trước khi lưu.
   nam: number;
   tuan: number;
   loai: LoaiGhiNhan;
   onAdded: () => void;
 }) {
   const user = useAuth();
+  const { show } = useToast();
   const isBaoCao = loai === "BAOCAO";
 
+  const [modalNam, setModalNam] = useState(nam);
+  const [modalTuan, setModalTuan] = useState(tuan);
   const [noiDung, setNoiDung] = useState("");
   const [ketQua, setKetQua] = useState("");
   const [ghiChu, setGhiChu] = useState("");
-  const [chuyenThanhPhong, setChuyenThanhPhong] = useState(false);
+  // Mặc định BẬT SẴN — hầu hết kế hoạch cá nhân đều cần chuyển thành kế hoạch phòng, để mặc định
+  // tắt khiến người dùng hay quên tick. Vẫn có thể bỏ tick nếu không muốn chuyển.
+  const [chuyenThanhPhong, setChuyenThanhPhong] = useState(true);
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
   const [selectedPhoiHop, setSelectedPhoiHop] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -45,24 +59,39 @@ export default function AddKeHoachBaoCaoModal({
   useEffect(() => {
     if (!isOpen) return;
     getNhanVienList().then(setNhanVienList);
-  }, [isOpen]);
+    // Mỗi lần mở modal, đưa tuần về đúng mặc định của board hiện tại (tránh giữ tuần đã chọn lần
+    // trước nếu người dùng đã đổi rồi đóng modal mà không lưu).
+    setModalNam(nam);
+    setModalTuan(tuan);
+    setChuyenThanhPhong(true);
+  }, [isOpen, nam, tuan]);
+
+  // Danh sách "Tuần" hiển thị trong modal — KHÔNG còn dropdown "Năm" riêng:
+  // - Kế hoạch: được lập cho tương lai, nên nối thêm vài tuần đầu năm sau (xử lý mốc cuối năm).
+  // - Báo cáo: chỉ báo cáo việc đã/đang làm, không cho chọn tuần tương lai — giới hạn tới tuần
+  //   hiện tại của năm hiện tại.
+  const tuanOptions = useMemo(() => {
+    if (isBaoCao) {
+      const { nam: namHT, tuan: tuanHT } = getCurrentWeekInfo();
+      return getTuanOptions(namHT, { maxTuan: tuanHT });
+    }
+    return getTuanOptions(modalNam, { forwardExtraWeeksNextYear: 12 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBaoCao, modalNam, isOpen]);
 
   // Không cần chọn phòng ban riêng — chỉ hiện đồng nghiệp CÙNG PHÒNG với người đang đăng nhập,
   // và loại chính mình ra (không thể "phối hợp" với bản thân).
-  // LƯU Ý: field "selected" dưới đây KHÔNG được component MultiSelect thực sự dùng tới (nó tự
-  // quản lý trạng thái chọn qua state nội bộ selectedOptions) — nhưng interface Option của nó khai
-  // báo field này là bắt buộc, nên vẫn phải truyền vào (giá trị gì cũng được, luôn để false là đủ).
   const nhanVienOptions = useMemo(() => {
     return nhanVienList
       .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
-      .map((nv) => ({ value: nv.maNV, text: nv.hoTen, selected: false }));
+      .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
 
   function resetAndClose() {
     setNoiDung("");
     setKetQua("");
     setGhiChu("");
-    setChuyenThanhPhong(false);
+    setChuyenThanhPhong(true);
     setSelectedPhoiHop([]);
     setError(null);
     onClose();
@@ -77,8 +106,8 @@ export default function AddKeHoachBaoCaoModal({
     setError(null);
     try {
       await submitKeHoachCaNhan({
-        nam,
-        tuan,
+        nam: modalNam,
+        tuan: modalTuan,
         loai,
         noiDung,
         ketQua,
@@ -86,10 +115,17 @@ export default function AddKeHoachBaoCaoModal({
         nguoiPhoiHopIds: selectedPhoiHop,
         chuyenThanhKeHoachPhong: chuyenThanhPhong,
       });
+      show(
+        "success",
+        "Đã lưu thành công",
+        `Đã thêm ${isBaoCao ? "báo cáo" : "kế hoạch"} cho Tuần ${modalTuan}, ${modalNam}`
+      );
       onAdded();
       resetAndClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Có lỗi xảy ra, vui lòng thử lại");
+      const msg = e instanceof Error ? e.message : "Có lỗi xảy ra, vui lòng thử lại";
+      setError(msg);
+      show("error", "Lưu thất bại", msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -100,10 +136,6 @@ export default function AddKeHoachBaoCaoModal({
       <h4 className="mb-2 text-lg font-medium text-gray-800 dark:text-white/90">
         Thêm {isBaoCao ? "báo cáo" : "kế hoạch"}
       </h4>
-      <p className="mb-6 text-sm font-medium text-error-500">
-        Bạn đang nhập {isBaoCao ? "BÁO CÁO" : "KẾ HOẠCH"} cho Tuần {tuan}, Năm {nam} (Từ ngày{" "}
-        {getWeekDateRangeLabel(nam, tuan)})
-      </p>
 
       {error && (
         <div className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -112,6 +144,36 @@ export default function AddKeHoachBaoCaoModal({
       )}
 
       <div className="space-y-5">
+        {/* Dropdown chọn tuần ngay trong modal — chỉ còn 1 lựa chọn "Tuần" (không có "Năm" riêng
+            nữa). Mặc định lấy theo tuần board đang xem (tuần sau với Kế hoạch, tuần hiện tại với
+            Báo cáo), cho phép đổi sang tuần khác trước khi lưu. */}
+        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-4 dark:border-brand-500/20 dark:bg-brand-500/5">
+          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+            Nhập {isBaoCao ? "báo cáo" : "kế hoạch"} cho tuần nào?
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Tuần</label>
+            <select
+              value={`${modalNam}-${modalTuan}`}
+              onChange={(e) => {
+                const { nam: n, tuan: t } = parseTuanOptionValue(e.target.value);
+                setModalNam(n);
+                setModalTuan(t);
+              }}
+              className="h-10 w-full max-w-[220px] rounded-lg border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            >
+              {tuanOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="mt-2 text-xs text-gray-400">
+            Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
+          </p>
+        </div>
+
         <div>
           <Label>
             Nội dung <span className="text-error-500">*</span>
@@ -138,14 +200,12 @@ export default function AddKeHoachBaoCaoModal({
           </div>
         )}
 
-        <div>
-          <MultiSelect
-            label="Người phối hợp cùng phòng (không bắt buộc)"
-            options={nhanVienOptions}
-            defaultSelected={selectedPhoiHop}
-            onChange={(values) => setSelectedPhoiHop(values)}
-          />
-        </div>
+        <NguoiPhoiHopSelect
+          label="Người phối hợp cùng phòng (không bắt buộc)"
+          options={nhanVienOptions}
+          selected={selectedPhoiHop}
+          onChange={setSelectedPhoiHop}
+        />
 
         <div>
           <Label>Ghi chú</Label>
@@ -163,11 +223,18 @@ export default function AddKeHoachBaoCaoModal({
       </div>
 
       <div className="flex items-center justify-end w-full gap-3 mt-6">
-        <Button size="sm" variant="outline" onClick={resetAndClose}>
+        <Button size="sm" variant="outline" onClick={resetAndClose} disabled={isSubmitting}>
           Huỷ
         </Button>
         <Button size="sm" onClick={handleSave} disabled={isSubmitting}>
-          {isSubmitting ? "Đang lưu..." : "Lưu"}
+          {isSubmitting ? (
+            <span className="flex items-center gap-2">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+              Đang lưu...
+            </span>
+          ) : (
+            "Lưu"
+          )}
         </Button>
       </div>
     </Modal>

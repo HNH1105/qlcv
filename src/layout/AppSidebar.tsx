@@ -112,31 +112,44 @@ const adminItems: NavItem[] = [
 // bên trong (giống bản Apps Script cũ dùng subTab), KHÔNG tách thành nhiều route riêng.
 // Lý do: sidebar gọn hơn nhiều (3 mục thay vì 8), và giữ đúng luồng thao tác người dùng
 // đã quen (chuyển tab tại chỗ, không load lại trang / mất ngữ cảnh tuần đang chọn).
-const navItems: NavItem[] = [
-  {
-    icon: <GridIcon />,
-    name: "Cá nhân",
-    subItems: [
-      { name: "Kế hoạch", path: "/ca-nhan/ke-hoach", pro: false },
-      { name: "Báo cáo", path: "/ca-nhan/bao-cao", pro: false },
-    ],
-  },
-  {
-    icon: <GridIcon />,
-    name: "Phòng",
-    subItems: [
-      { name: "Kế hoạch", path: "/phong/ke-hoach", pro: false },
-      { name: "Báo cáo", path: "/phong/bao-cao", pro: false },
-    ],
-  },
-  {
-    icon: <GridIcon />,
-    name: "Nhiệm vụ",
-    // Không có subItems: trang /nhiem-vu tự có tab "Danh sách" / "+ Tạo nhiệm vụ" bên trong,
-    // đúng như NhiemVu_Markup.html bản cũ (nvTabDS / nvTabTAO cùng 1 container).
-    path: "/nhiem-vu",
-  },
-];
+// "Toàn bộ phòng" (trước đây là tab "Toàn bộ" bên trong board Kế hoạch/Báo cáo cá nhân, chỉ lãnh
+// đạo phòng/đơn vị thấy) — nay CHUYỂN RA thành 2 mục menu riêng, bắt vào menu trái thay vì bắt
+// theo tab, và chỉ hiện với người có quyen LANHDAOPHONG/LANHDAODONVI. Đặt là hàm (thay vì const
+// tĩnh) vì cần biết quyen của người đang đăng nhập mới quyết định được có thêm 2 mục này hay
+// không.
+function getNavItems(isLanhDao: boolean): NavItem[] {
+  return [
+    {
+      icon: <GridIcon />,
+      name: "Cá nhân",
+      subItems: [
+        { name: "Kế hoạch", path: "/ca-nhan/ke-hoach", pro: false },
+        { name: "Báo cáo", path: "/ca-nhan/bao-cao", pro: false },
+        ...(isLanhDao
+          ? [
+              { name: "Kế hoạch (Toàn bộ phòng)", path: "/ca-nhan/ke-hoach-toan-phong", pro: false },
+              { name: "Báo cáo (Toàn bộ phòng)", path: "/ca-nhan/bao-cao-toan-phong", pro: false },
+            ]
+          : []),
+      ],
+    },
+    {
+      icon: <GridIcon />,
+      name: "Phòng",
+      subItems: [
+        { name: "Kế hoạch", path: "/phong/ke-hoach", pro: false },
+        { name: "Báo cáo", path: "/phong/bao-cao", pro: false },
+      ],
+    },
+    {
+      icon: <GridIcon />,
+      name: "Nhiệm vụ",
+      // Không có subItems: trang /nhiem-vu tự có tab "Danh sách" / "+ Tạo nhiệm vụ" bên trong,
+      // đúng như NhiemVu_Markup.html bản cũ (nvTabDS / nvTabTAO cùng 1 container).
+      path: "/nhiem-vu",
+    },
+  ];
+}
 
 // ==========================================================================================
 // ====================              MENU "TRA CỨU"                        =================
@@ -159,16 +172,22 @@ const SearchItems: NavItem[] = [
 // hiển thị thật (lỗi cũ: useEffect tự dò theo biến "othersItems" trong khi màn hình lại render
 // "SearchItems" cho menuType "others" — 2 nguồn dữ liệu khác nhau nên tự-mở-submenu bị sai).
 type MenuType = "main" | "others" | "admin";
-const allMenus: Record<MenuType, NavItem[]> = {
-  main: navItems,
-  others: SearchItems,
-  admin: adminItems,
-};
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const user = useAuth();
+
+  // Giả định user.quyen tồn tại trên đối tượng trả về từ useAuth() (đã được lưu ý ở lần sửa
+  // trước, dùng chung cho tab "Toàn bộ" cũ) — nếu chưa có field này trên context thì 2 mục menu
+  // "Toàn bộ phòng" sẽ không hiện cho ai cả, cần bổ sung field quyen vào AuthContext.
+  const isLanhDao = user?.quyen === "LANHDAOPHONG" || user?.quyen === "LANHDAODONVI";
+  const navItems = getNavItems(isLanhDao);
+  const allMenus: Record<MenuType, NavItem[]> = {
+    main: navItems,
+    others: SearchItems,
+    admin: adminItems,
+  };
 
   const renderMenuItems = (items: NavItem[], menuType: MenuType) => (
     <ul className="flex flex-col gap-4">
