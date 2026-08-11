@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWeekInfo, getWeekDateRangeLabel } from "@/lib/week";
-import { getKeHoachToanPhong, type KeHoachToanPhongRow } from "@/lib/actions/ke-hoach";
+import { getKeHoachToanPhong, convertCaNhanToPhong, type KeHoachToanPhongRow } from "@/lib/actions/ke-hoach";
 import WeekSelect from "./WeekSelect";
 import ToanBoPhongList from "./ToanBoPhongList";
 import ToastProvider, { useToast } from "./ToastProvider";
 
-// Trang mới: "Cá nhân" -> "Báo cáo (Toàn bộ phòng)" — CHỈ XEM (không có hành động chuyển phòng vì
-// Báo cáo không có khái niệm này), lãnh đạo chọn tuần để xem báo cáo của mọi chuyên viên trong
-// phòng. Mặc định hiển thị TUẦN HIỆN TẠI (đúng bản chất báo cáo việc đã làm trong tuần).
+// Trang mới: "Cá nhân" -> "Báo cáo (Toàn bộ phòng)" — lãnh đạo chọn tuần để xem báo cáo của mọi
+// chuyên viên trong phòng, và giờ có thêm hành động "Chuyển thành Báo cáo Phòng" cho từng dòng
+// (chuẩn bị dữ liệu sẵn cho tính năng Báo cáo Phòng sẽ làm ở màn "Phòng" sau này). Mặc định hiển
+// thị TUẦN HIỆN TẠI (đúng bản chất báo cáo việc đã làm trong tuần).
 export default function BaoCaoToanPhongBoard() {
   return (
     <ToastProvider>
@@ -39,6 +40,16 @@ function Content() {
     reload();
   }, [reload]);
 
+  async function handleConvert(id: number) {
+    try {
+      await convertCaNhanToPhong(id);
+      show("success", "Đã chuyển thành công", "Đã chuyển thành Báo cáo Phòng");
+      reload();
+    } catch (e) {
+      show("error", "Chuyển thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-4 sm:px-6 dark:border-white/[0.05]">
@@ -56,8 +67,7 @@ function Content() {
             Đang tải...
           </div>
         ) : (
-          // Không truyền onConvert -> ToanBoPhongList tự ẩn nút hành động, đúng yêu cầu "chỉ xem".
-          <ToanBoPhongList rows={rows} loai="BAOCAO" />
+          <ToanBoPhongList rows={rows} onConvert={handleConvert} loai="BAOCAO" />
         )}
       </div>
     </div>

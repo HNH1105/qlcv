@@ -83,7 +83,7 @@ export default function ToanBoPhongList({
                     onClick={() => onConvert(row.id)}
                     className="shrink-0 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-purple-50 hover:text-purple-600 dark:bg-white/5 dark:text-gray-300"
                   >
-                    → Chuyển KH Phòng
+                    → Chuyển {loai === "KEHOACH" ? "KH" : "BC"} Phòng
                   </button>
                 )}
               </div>

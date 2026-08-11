@@ -65,12 +65,11 @@ export default function KeHoachBaoCaoItemCard({
     setIsPending(true);
     try {
       const res = await convertCaNhanToPhong(row.id);
+      const tenPhong = isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng";
       show(
         "success",
         "Đã chuyển thành công",
-        res.alreadyConverted
-          ? "Mục này đã được chuyển thành Kế hoạch Phòng trước đó"
-          : "Đã chuyển thành Kế hoạch Phòng"
+        res.alreadyConverted ? `Mục này đã được chuyển thành ${tenPhong} trước đó` : `Đã chuyển thành ${tenPhong}`
       );
       onChanged();
     } catch (e) {
@@ -165,7 +164,9 @@ export default function KeHoachBaoCaoItemCard({
             🔍 Xem chi tiết
           </DropdownItem>
 
-          {isKeHoach && !row.daChuyenPhong && (
+          {/* Trước đây CHỈ Kế hoạch mới có hành động này — nay mở rộng cho cả Báo cáo (chuyển
+              thành Báo cáo Phòng), chuẩn bị dữ liệu cho tính năng bên Phòng sẽ làm sau. */}
+          {!row.daChuyenPhong && (
             <DropdownItem
               onItemClick={() => {
                 setIsMenuOpen(false);
@@ -173,7 +174,7 @@ export default function KeHoachBaoCaoItemCard({
               }}
               className="rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
             >
-              → Chuyển thành Kế hoạch Phòng
+              → Chuyển thành {isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng"}
             </DropdownItem>
           )}
 
@@ -220,8 +221,8 @@ export default function KeHoachBaoCaoItemCard({
 
       <ConfirmDialog
         isOpen={confirmAction === "chuyenPhong"}
-        title="Chuyển thành Kế hoạch Phòng"
-        description="Bạn muốn đồng thời chuyển 1 kế hoạch cá nhân này thành kế hoạch phòng?"
+        title={`Chuyển thành ${isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng"}`}
+        description={`Bạn muốn đồng thời chuyển 1 ${isKeHoach ? "kế hoạch" : "báo cáo"} cá nhân này thành ${isKeHoach ? "kế hoạch" : "báo cáo"} phòng?`}
         isLoading={isPending}
         onConfirm={handleConfirmConvert}
         onClose={() => setConfirmAction(null)}

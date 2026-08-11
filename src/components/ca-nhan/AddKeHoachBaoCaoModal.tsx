@@ -48,11 +48,14 @@ export default function AddKeHoachBaoCaoModal({
   const [noiDung, setNoiDung] = useState("");
   const [ketQua, setKetQua] = useState("");
   const [ghiChu, setGhiChu] = useState("");
-  // Mặc định BẬT SẴN — hầu hết kế hoạch cá nhân đều cần chuyển thành kế hoạch phòng, để mặc định
-  // tắt khiến người dùng hay quên tick. Vẫn có thể bỏ tick nếu không muốn chuyển.
-  const [chuyenThanhPhong, setChuyenThanhPhong] = useState(true);
+  // Mặc định: Kế hoạch BẬT SẴN (đa số cần chuyển ngay), Báo cáo TẮT SẴN (tính năng Báo cáo Phòng
+  // bên "Phòng" chưa làm xong, để mặc định tắt tránh tạo dữ liệu thừa ngoài ý muốn).
+  const [chuyenThanhPhong, setChuyenThanhPhong] = useState(!isBaoCao);
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
   const [selectedPhoiHop, setSelectedPhoiHop] = useState<string[]>([]);
+  // Người phối hợp mặc định ẨN — chỉ hiện ra khi bấm nút "+ Thêm người phối hợp" cùng hàng với
+  // dropdown Tuần, tránh chiếm chỗ ngay từ đầu khi phần lớn trường hợp không cần dùng tới.
+  const [showPhoiHop, setShowPhoiHop] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -63,8 +66,9 @@ export default function AddKeHoachBaoCaoModal({
     // trước nếu người dùng đã đổi rồi đóng modal mà không lưu).
     setModalNam(nam);
     setModalTuan(tuan);
-    setChuyenThanhPhong(true);
-  }, [isOpen, nam, tuan]);
+    setChuyenThanhPhong(!isBaoCao);
+    setShowPhoiHop(false);
+  }, [isOpen, nam, tuan, isBaoCao]);
 
   // Danh sách "Tuần" hiển thị trong modal — KHÔNG còn dropdown "Năm" riêng:
   // - Kế hoạch: được lập cho tương lai, nên nối thêm vài tuần đầu năm sau (xử lý mốc cuối năm).
@@ -91,8 +95,9 @@ export default function AddKeHoachBaoCaoModal({
     setNoiDung("");
     setKetQua("");
     setGhiChu("");
-    setChuyenThanhPhong(true);
+    setChuyenThanhPhong(!isBaoCao);
     setSelectedPhoiHop([]);
+    setShowPhoiHop(false);
     setError(null);
     onClose();
   }
@@ -144,13 +149,10 @@ export default function AddKeHoachBaoCaoModal({
       )}
 
       <div className="space-y-5">
-        {/* Dropdown chọn tuần ngay trong modal — chỉ còn 1 lựa chọn "Tuần" (không có "Năm" riêng
-            nữa). Mặc định lấy theo tuần board đang xem (tuần sau với Kế hoạch, tuần hiện tại với
-            Báo cáo), cho phép đổi sang tuần khác trước khi lưu. */}
-        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-4 dark:border-brand-500/20 dark:bg-brand-500/5">
-          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Nhập {isBaoCao ? "báo cáo" : "kế hoạch"} cho tuần nào?
-          </p>
+        {/* Bỏ khung tô màu + câu hỏi "Nhập ... cho tuần nào?" — chỉ còn 1 dropdown Tuần gọn, đặt
+            cùng hàng với nút "+ Thêm người phối hợp" (người phối hợp mặc định ẩn, bấm nút mới hiện
+            ra bên dưới) để tiết kiệm chỗ cho phần lớn trường hợp không cần phối hợp ai. */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Tuần</label>
             <select
@@ -160,7 +162,7 @@ export default function AddKeHoachBaoCaoModal({
                 setModalNam(n);
                 setModalTuan(t);
               }}
-              className="h-10 w-full max-w-[220px] rounded-lg border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              className="h-10 min-w-[160px] rounded-lg border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
               {tuanOptions.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -168,11 +170,30 @@ export default function AddKeHoachBaoCaoModal({
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
+            </p>
           </div>
-          <p className="mt-2 text-xs text-gray-400">
-            Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
-          </p>
+
+          {!showPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhoiHop(true)}
+              className="flex h-10 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm người phối hợp
+            </button>
+          )}
         </div>
+
+        {showPhoiHop && (
+          <NguoiPhoiHopSelect
+            label="Người phối hợp cùng phòng (không bắt buộc)"
+            options={nhanVienOptions}
+            selected={selectedPhoiHop}
+            onChange={setSelectedPhoiHop}
+          />
+        )}
 
         <div>
           <Label>
@@ -200,26 +221,20 @@ export default function AddKeHoachBaoCaoModal({
           </div>
         )}
 
-        <NguoiPhoiHopSelect
-          label="Người phối hợp cùng phòng (không bắt buộc)"
-          options={nhanVienOptions}
-          selected={selectedPhoiHop}
-          onChange={setSelectedPhoiHop}
-        />
-
         <div>
           <Label>Ghi chú</Label>
           <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
         </div>
 
-        {!isBaoCao && (
-          <div className="flex items-center gap-2">
-            <Checkbox checked={chuyenThanhPhong} onChange={setChuyenThanhPhong} />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              Đồng thời chuyển thành Kế hoạch Phòng
-            </span>
-          </div>
-        )}
+        {/* Trước đây checkbox này CHỈ hiện cho Kế hoạch — nay hiện cho cả Báo cáo (nhãn đổi theo
+            loại), nhưng mặc định TẮT với Báo cáo (khác Kế hoạch mặc định BẬT) vì tính năng "Báo
+            cáo Phòng" bên màn Phòng chưa hoàn thiện, tránh tạo dữ liệu thừa ngoài ý muốn. */}
+        <div className="flex items-center gap-2">
+          <Checkbox checked={chuyenThanhPhong} onChange={setChuyenThanhPhong} />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            Đồng thời chuyển thành {isBaoCao ? "Báo cáo Phòng" : "Kế hoạch Phòng"}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center justify-end w-full gap-3 mt-6">
