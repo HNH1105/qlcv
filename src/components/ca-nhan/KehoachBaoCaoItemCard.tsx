@@ -24,6 +24,8 @@ export default function KeHoachBaoCaoItemCard({
   isSelected,
   onToggleSelect,
   onChanged,
+  nguoiTao,
+  allowConvertToPhong = true,
 }: {
   row: KeHoachRow;
   loai: LoaiGhiNhan;
@@ -32,6 +34,13 @@ export default function KeHoachBaoCaoItemCard({
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
   onChanged: () => void;
+  // Chỉ có ý nghĩa ở bảng CẤP PHÒNG (nhiều người khác nhau cùng tạo) — hiển thị "Người tạo: ..."
+  // trên card. Bên cá nhân không truyền vì luôn là chính người đang xem, không cần hiện.
+  nguoiTao?: { maNV: string; hoTen: string } | null;
+  // Bảng cấp Phòng KHÔNG có hành động "Chuyển thành ... Phòng" nữa (bản thân dòng đó đã là cấp
+  // Phòng rồi) — truyền false để ẩn mục này trong menu 3 chấm. Mặc định true để không phá vỡ chỗ
+  // gọi cũ (bảng cá nhân).
+  allowConvertToPhong?: boolean;
 }) {
   const isKeHoach = loai === "KEHOACH";
   const { show } = useToast();
@@ -123,6 +132,11 @@ export default function KeHoachBaoCaoItemCard({
               Ghi chú: {row.ghiChu}
             </p>
           )}
+          {nguoiTao && (
+            <p className="mt-1 break-words text-xs text-gray-400">
+              Người tạo: <span className="text-gray-500 dark:text-gray-300">{nguoiTao.hoTen}</span>
+            </p>
+          )}
           {row.nguoiPhoiHop.length > 0 && (
             <p className="mt-1 break-words text-xs text-gray-400">
               Phối hợp: {row.nguoiPhoiHop.map((p) => p.hoTen).join(", ")}
@@ -165,8 +179,9 @@ export default function KeHoachBaoCaoItemCard({
           </DropdownItem>
 
           {/* Trước đây CHỈ Kế hoạch mới có hành động này — nay mở rộng cho cả Báo cáo (chuyển
-              thành Báo cáo Phòng), chuẩn bị dữ liệu cho tính năng bên Phòng sẽ làm sau. */}
-          {!row.daChuyenPhong && (
+              thành Báo cáo Phòng). Ẩn hẳn khi allowConvertToPhong=false (bảng cấp Phòng — dòng đó
+              đã là cấp Phòng rồi, không "chuyển" lên đâu nữa). */}
+          {allowConvertToPhong && !row.daChuyenPhong && (
             <DropdownItem
               onItemClick={() => {
                 setIsMenuOpen(false);
@@ -217,6 +232,7 @@ export default function KeHoachBaoCaoItemCard({
         onClose={() => setIsChiTietOpen(false)}
         row={row}
         loai={loai}
+        nguoiTao={nguoiTao}
       />
 
       <ConfirmDialog
