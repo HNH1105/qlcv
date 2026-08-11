@@ -25,10 +25,19 @@ export type KeHoachToanPhongRow = KeHoachRow & {
   nguoiThucHien: { maNV: string; hoTen: string } | null;
 };
 
+// Dòng Kế hoạch/Báo cáo CẤP PHÒNG (capDo=PHONG) — dùng cho 2 màn hình mới "/phong/ke-hoach" và
+// "/phong/bao-cao". Khác KeHoachRow (cá nhân) ở chỗ có thêm `nguoiTao`: vì ở cấp phòng, nhiều
+// người khác nhau trong phòng có thể là người tạo ra dòng đó (tự nhập trực tiếp, hoặc do được
+// chuyển từ kế hoạch/báo cáo cá nhân của ai đó) — cần hiển thị rõ trên card "của ai tạo".
+export type KeHoachPhongRow = KeHoachRow & {
+  nguoiTao: { maNV: string; hoTen: string } | null;
+};
+
 function revalidateAllLienQuan() {
   revalidatePath("/ca-nhan/ke-hoach");
   revalidatePath("/ca-nhan/bao-cao");
   revalidatePath("/phong/ke-hoach");
+  revalidatePath("/phong/bao-cao");
 }
 
 // ==================== NHẬP (1 mục/lần — đúng theo modal Thêm mới) ====================
@@ -169,6 +178,86 @@ export async function getKeHoachToanPhong(
       ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
       : null,
     nguoiThucHien: r.nhanVien ? { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen } : null,
+  }));
+}
+
+// ==================== NHẬP TRỰC TIẾP Ở CẤP PHÒNG (2 màn "/phong/ke-hoach" và "/phong/bao-cao") ===
+// Khác submitKeHoachCaNhan ở chỗ: tạo thẳng capDo=PHONG (không phải CANHAN), maNV lưu lại là NGƯỜI
+// TẠO (để hiển thị "Người tạo: ..." trên card, vì ở cấp phòng có nhiều người khác nhau cùng nhập).
+// Không có tuỳ chọn "chuyển thành phòng" vì bản thân dòng này đã là cấp phòng rồi.
+export async function submitKeHoachPhong(params: {
+  nam: number;
+  tuan: number;
+  loai: LoaiGhiNhan;
+  noiDung: string;
+  ketQua?: string;
+  ghiChu?: string;
+  nguoiPhoiHopIds?: string[];
+}) {
+  const user = await requireSession();
+  const noiDung = params.noiDung.trim();
+  if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  const created = await prisma.keHoachTuan.create({
+    data: {
+      nam: params.nam,
+      tuan: params.tuan,
+      loai: params.loai,
+      capDo: CapDoKeHoach.PHONG,
+      maPhong: user.maPhong,
+      maNV: user.maNV,
+      noiDung,
+      ketQua: params.ketQua?.trim() || null,
+      ghiChu: params.ghiChu?.trim() || null,
+      nguoiCapNhatId: user.maNV,
+      nguoiPhoiHop:
+        params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
+          ? { create: params.nguoiPhoiHopIds.map((maNV) => ({ maNV })) }
+          : undefined,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true, id: created.id };
+}
+
+// ==================== XEM KẾ HOẠCH/BÁO CÁO CẤP PHÒNG (mọi người trong phòng đều xem/thao tác) ===
+// KHÔNG giới hạn theo quyen (khác getKeHoachToanPhong ở trên vốn chỉ dành cho lãnh đạo xem kế
+// hoạch CÁ NHÂN của người khác) — đây là bảng CHUNG của cả phòng, ai trong phòng cũng xem và thao
+// tác được (đánh dấu hoàn thành / cập nhật kết quả), miễn đăng nhập đúng phòng đó. Vết cập nhật vẫn
+// lưu đúng người thao tác qua nguoiCapNhatId, hiển thị được "ai vừa cập nhật" như bên cá nhân.
+export async function getKeHoachPhong(
+  nam: number,
+  tuan: number,
+  loai: LoaiGhiNhan
+): Promise<KeHoachPhongRow[]> {
+  const user = await requireSession();
+
+  const rows = await prisma.keHoachTuan.findMany({
+    where: { nam, tuan, loai, capDo: CapDoKeHoach.PHONG, maPhong: user.maPhong },
+    orderBy: { id: "asc" },
+    include: {
+      nhanVien: { select: { maNV: true, hoTen: true } }, // người tạo
+      nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
+      nguoiCapNhat: { select: { maNV: true, hoTen: true } },
+      banChuyen: { select: { id: true } },
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    noiDung: r.noiDung,
+    ketQua: r.ketQua,
+    ghiChu: r.ghiChu,
+    daHoanThanh: r.daHoanThanh,
+    daChuyenPhong: r.banChuyen.length > 0, // giữ field để khớp type KeHoachRow, không dùng ở UI Phòng
+    nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
+    taoLuc: r.taoLuc,
+    ngayCapNhat: r.ngayCapNhat,
+    nguoiCapNhat: r.nguoiCapNhat
+      ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
+      : null,
+    nguoiTao: r.nhanVien ? { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen } : null,
   }));
 }
 

@@ -10,11 +10,14 @@ export default function ChiTietModal({
   onClose,
   row,
   loai,
+  nguoiTao,
 }: {
   isOpen: boolean;
   onClose: () => void;
   row: KeHoachRow | null;
   loai: LoaiGhiNhan;
+  // Chỉ có ở bảng cấp Phòng — hiển thị "Người tạo" ngay dưới tiêu đề để biết dòng này của ai.
+  nguoiTao?: { maNV: string; hoTen: string } | null;
 }) {
   const isBaoCao = loai === "BAOCAO";
 
@@ -23,6 +26,12 @@ export default function ChiTietModal({
       <h4 className="mb-4 text-lg font-medium text-gray-800 dark:text-white/90">
         Chi tiết {isBaoCao ? "báo cáo" : "kế hoạch"}
       </h4>
+
+      {nguoiTao && (
+        <p className="-mt-2 mb-4 text-xs text-gray-400">
+          Người tạo: <span className="text-gray-600 dark:text-gray-300">{nguoiTao.hoTen}</span>
+        </p>
+      )}
 
       {row && (
         <div className="space-y-4 text-sm">
