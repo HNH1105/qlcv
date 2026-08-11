@@ -14,7 +14,7 @@ import KeHoachBaoCaoItemCard from "@/components/ca-nhan/KehoachBaoCaoItemCard";
 import UpdateResultModal from "@/components/ca-nhan/UpdateResultModal";
 import ConfirmDialog from "@/components/ca-nhan/ConfirmDialog";
 import ToastProvider, { useToast } from "@/components/ca-nhan/ToastProvider";
-import AddKeHoachBaoCaoPhongModal from "./AddKeHoachBaoCaoPhongModal";
+import AddKeHoachBaoCaoPhongModal from "@/components/phong/AddKeHoachBaoCaoPhongModal";
 
 // Bảng Kế hoạch/Báo cáo CẤP PHÒNG — logic/giao diện gần như y hệt bảng cá nhân
 // (KeHoachBaoCaoBoard.tsx), khác 3 điểm chính:

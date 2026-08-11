@@ -159,9 +159,8 @@ const SearchItems: NavItem[] = [
     icon: <GridIcon />,
     name: "Tra cứu",
     subItems: [
-      { name: "Kế hoạch Phòng", path: "/tra-cuu/ke-hoach-phong", pro: false },
-      { name: "Kế hoạch cá nhân", path: "/tra-cuu/ke-hoach-ca-nhan", pro: false },
-      { name: "Báo cáo cá nhân", path: "/tra-cuu/bao-cao-ca-nhan", pro: false },
+      { name: "Kế hoạch", path: "/tra-cuu/ke-hoach", pro: false },
+      { name: "Báo cáo", path: "/tra-cuu/bao-cao", pro: false },
       { name: "Nhiệm vụ", path: "/tra-cuu/nhiem-vu", pro: false },
     ],
   },
