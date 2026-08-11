@@ -60,7 +60,7 @@ export default function NguoiPhoiHopSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 shadow-theme-lg dark:border-gray-700 dark:bg-gray-dark">
+        <div className="absolute z-40 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 shadow-theme-lg dark:border-gray-700 dark:bg-gray-dark">
           {options.length === 0 ? (
             <p className="px-3 py-2 text-sm text-gray-400">Không có đồng nghiệp cùng phòng</p>
           ) : (

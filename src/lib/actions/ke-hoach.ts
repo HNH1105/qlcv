@@ -40,7 +40,10 @@ export async function submitKeHoachCaNhan(params: {
   ketQua?: string;
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
-  chuyenThanhKeHoachPhong?: boolean; // chỉ có tác dụng khi loai === KEHOACH
+  // Trước đây field này chỉ có tác dụng khi loai === KEHOACH — nay áp dụng cho cả BAOCAO (checkbox
+  // "Đồng thời chuyển thành Báo cáo Phòng" trong modal Thêm báo cáo), giữ tên cũ để không phải sửa
+  // chỗ gọi, nhưng bản chất giờ là "chuyển thành [Kế hoạch|Báo cáo] Phòng" tuỳ theo params.loai.
+  chuyenThanhKeHoachPhong?: boolean;
 }) {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
@@ -65,14 +68,15 @@ export async function submitKeHoachCaNhan(params: {
     },
   });
 
-  // Đồng thời tạo bản Kế hoạch Phòng — giống hệt nút "Chuyển thành Kế hoạch Phòng" bên Apps Script,
-  // chỉ khác là làm ngay lúc nhập nếu người dùng tick chọn, không cần vào tab Xem lại thao tác thêm.
-  if (params.chuyenThanhKeHoachPhong && params.loai === "KEHOACH") {
+  // Đồng thời tạo bản Kế hoạch/Báo cáo Phòng — giống hệt nút "Chuyển thành ... Phòng" bên Apps
+  // Script, chỉ khác là làm ngay lúc nhập nếu người dùng tick chọn, không cần vào tab Xem lại thao
+  // tác thêm. Dùng params.loai thay vì hard-code "KEHOACH" để áp dụng được cho cả Báo cáo.
+  if (params.chuyenThanhKeHoachPhong) {
     await prisma.keHoachTuan.create({
       data: {
         nam: params.nam,
         tuan: params.tuan,
-        loai: "KEHOACH",
+        loai: params.loai,
         capDo: CapDoKeHoach.PHONG,
         maPhong: user.maPhong,
         maNV: user.maNV,
@@ -235,14 +239,18 @@ export async function updateKetQuaGhiChu(
   return { success: true, updated: result.count };
 }
 
-// ==================== CHUYỂN THÀNH KẾ HOẠCH PHÒNG (1 dòng, từ menu hành động) ====================
+// ==================== CHUYỂN THÀNH KẾ HOẠCH/BÁO CÁO PHÒNG (1 dòng, từ menu hành động) ==========
 // Chống trùng: nếu dòng này đã từng được chuyển trước đó thì bỏ qua, không tạo bản thứ 2.
+//
+// TRƯỚC ĐÂY hàm này CHỈ cho phép Kế hoạch (chặn cứng Báo cáo bằng throw Error). Nay MỞ RỘNG cho cả
+// Báo cáo — giữ nguyên `row.loai` khi tạo bản Phòng thay vì hard-code "KEHOACH", để chuẩn bị sẵn
+// dữ liệu "Báo cáo Phòng" cho tính năng bên Phòng sẽ làm sau (chỉ thêm 1 dòng dữ liệu, không tốn gì
+// thêm ở tầng DB vì loai/capDo là 2 field độc lập, đã có sẵn từ trước).
 export async function convertCaNhanToPhong(id: number) {
   const user = await requireSession();
 
   const row = await prisma.keHoachTuan.findUnique({ where: { id } });
-  if (!row) throw new Error("Không tìm thấy dòng kế hoạch này");
-  if (row.loai !== "KEHOACH") throw new Error("Chỉ Kế hoạch mới chuyển được thành Kế hoạch Phòng");
+  if (!row) throw new Error("Không tìm thấy dòng này");
 
   const daCo = await prisma.keHoachTuan.findFirst({ where: { nguonId: id } });
   if (daCo) return { success: true, alreadyConverted: true };
@@ -251,7 +259,7 @@ export async function convertCaNhanToPhong(id: number) {
     data: {
       nam: row.nam,
       tuan: row.tuan,
-      loai: "KEHOACH",
+      loai: row.loai,
       capDo: CapDoKeHoach.PHONG,
       maPhong: row.maPhong,
       maNV: user.maNV,
@@ -265,16 +273,16 @@ export async function convertCaNhanToPhong(id: number) {
   return { success: true, alreadyConverted: false };
 }
 
-// ==================== CHUYỂN THÀNH KẾ HOẠCH PHÒNG (HÀNG LOẠT — dùng cho checkbox chọn nhiều) ====
+// ==================== CHUYỂN THÀNH PHÒNG (HÀNG LOẠT — dùng cho checkbox chọn nhiều) ============
+// Cũng mở rộng tương tự convertCaNhanToPhong ở trên — không còn lọc chỉ giữ lại "KEHOACH" nữa.
 export async function convertCaNhanToPhongBulk(ids: number[]) {
   const user = await requireSession();
   if (ids.length === 0) return { success: true, converted: 0, boQua: 0 };
 
   const rows = await prisma.keHoachTuan.findMany({ where: { id: { in: ids } } });
-  const hopLe = rows.filter((r) => r.loai === "KEHOACH");
 
   let converted = 0;
-  for (const row of hopLe) {
+  for (const row of rows) {
     const daCo = await prisma.keHoachTuan.findFirst({ where: { nguonId: row.id } });
     if (daCo) continue;
 
@@ -282,7 +290,7 @@ export async function convertCaNhanToPhongBulk(ids: number[]) {
       data: {
         nam: row.nam,
         tuan: row.tuan,
-        loai: "KEHOACH",
+        loai: row.loai,
         capDo: CapDoKeHoach.PHONG,
         maPhong: row.maPhong,
         maNV: user.maNV,
@@ -295,5 +303,5 @@ export async function convertCaNhanToPhongBulk(ids: number[]) {
   }
 
   revalidateAllLienQuan();
-  return { success: true, converted, boQua: hopLe.length - converted };
+  return { success: true, converted, boQua: rows.length - converted };
 }
