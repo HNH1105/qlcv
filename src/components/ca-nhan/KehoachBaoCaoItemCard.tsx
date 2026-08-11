@@ -225,6 +225,7 @@ export default function KeHoachBaoCaoItemCard({
         currentKetQua={row.ketQua}
         currentGhiChu={row.ghiChu}
         onUpdated={onChanged}
+        showChuyenPhongNote={allowConvertToPhong}
       />
 
       <ChiTietModal

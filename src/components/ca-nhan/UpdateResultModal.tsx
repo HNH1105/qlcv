@@ -18,6 +18,11 @@ export default function UpdateResultModal({
   currentKetQua,
   currentGhiChu,
   onUpdated,
+  // Câu ghi chú "Nếu mục đã 'Đã chuyển Phòng'..." chỉ có ý nghĩa ở bảng CÁ NHÂN (nơi 1 dòng có thể
+  // đã được chuyển thành bản Phòng riêng). Ở bảng CẤP PHÒNG, dòng đang sửa BẢN THÂN NÓ đã là cấp
+  // Phòng rồi — không có khái niệm "chuyển phòng tương ứng" nữa, nên mặc định ẩn câu này khi dùng
+  // ở đó. Mặc định true để không phá vỡ chỗ gọi cũ (modal dùng ở bảng cá nhân).
+  showChuyenPhongNote = true,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +31,7 @@ export default function UpdateResultModal({
   currentKetQua?: string | null;
   currentGhiChu?: string | null;
   onUpdated: () => void;
+  showChuyenPhongNote?: boolean;
 }) {
   const isBulk = ids.length > 1;
   const { show } = useToast();
@@ -80,10 +86,12 @@ export default function UpdateResultModal({
           của ô đó.
         </p>
       )}
-      <p className="mb-6 text-xs text-gray-400">
-        Nếu mục đã "Đã chuyển Phòng", Kết quả/Ghi chú cũng sẽ tự động cập nhật cho Kế hoạch Phòng
-        tương ứng.
-      </p>
+      {showChuyenPhongNote && (
+        <p className="mb-6 text-xs text-gray-400">
+          Nếu mục đã "Đã chuyển Phòng", Kết quả/Ghi chú cũng sẽ tự động cập nhật cho Kế hoạch Phòng
+          tương ứng.
+        </p>
+      )}
 
       <div className="space-y-5">
         {!isBulk && (
