@@ -88,14 +88,14 @@ const AppHeader: React.FC = () => {
               width={30}
               height={30}
               className="dark:hidden"
-              src="./images/logo/logo-syt.svg"
+              src="/images/logo/logo-syt.svg"
               alt="Logo"
             />
             <Image
               width={30}
               height={30}
               className="hidden dark:block"
-              src="./images/logo/logo-syt.svg"
+              src="/images/logo/logo-syt.svg"
               alt="Logo"
             />
                Hệ thống QLCV</div>
