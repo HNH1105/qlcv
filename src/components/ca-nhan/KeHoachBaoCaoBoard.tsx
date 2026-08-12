@@ -210,12 +210,14 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
             >
               ✓ Đánh dấu hoàn thành
             </button>
-            <button
+            {/* TẠM THỜI ẨN nút Cập nhật hàng loạt theo yêu cầu (chưa xoá state/modal bên dưới để
+                dễ bật lại sau này — chỉ cần bỏ comment đoạn <button> này). */}
+            {/* <button
               onClick={() => setIsBulkUpdateOpen(true)}
               className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white shadow-theme-xs hover:bg-orange-600"
             >
               📝 Cập nhật kết quả/ghi chú
-            </button>
+            </button> */}
             <button
               onClick={() => setIsBulkConvertConfirmOpen(true)}
               className="rounded-lg bg-purple-500 px-3 py-1.5 text-xs font-medium text-white shadow-theme-xs hover:bg-purple-600"
