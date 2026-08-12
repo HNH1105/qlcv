@@ -200,7 +200,7 @@ export default function KeHoachBaoCaoItemCard({
             }}
             className="rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
           >
-            📝 Cập nhật nội dung/kết quả/ghi chú
+            📝 Cập nhật kết quả/ghi chú
           </DropdownItem>
 
           {isKeHoach && (

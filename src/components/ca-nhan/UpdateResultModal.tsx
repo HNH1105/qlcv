@@ -8,12 +8,16 @@ import Button from "@/components/ui/button/Button";
 import { updateKetQuaGhiChu } from "@/lib/actions/ke-hoach";
 import { useToast } from "./ToastProvider";
 
+// THEO YÊU CẦU: modal này KHÔNG còn cho sửa "Nội dung" nữa (dù sửa 1 dòng hay hàng loạt) — chỉ còn
+// sửa được Kết quả/Ghi chú. Áp dụng đồng thời cho cả Kế hoạch lẫn Báo cáo, Cá nhân lẫn Phòng, vì cả
+// 4 nơi đều dùng chung đúng 1 component này. Nội dung gốc vẫn hiển thị (khi sửa 1 dòng) dạng CHỈ
+// ĐỌC để người dùng biết đang cập nhật đúng mục nào, không có ô nhập liệu nào cho nó nữa.
 export default function UpdateResultModal({
   isOpen,
   onClose,
   ids,
-  // Chỉ truyền các giá trị hiện tại khi sửa ĐÚNG 1 dòng (ids.length === 1) — trường hợp chọn
-  // nhiều dòng để cập nhật hàng loạt thì để trống nghĩa là "không đổi", không hiển thị ô Nội dung.
+  // Chỉ truyền khi sửa ĐÚNG 1 dòng (ids.length === 1) — dùng để hiển thị CHỈ ĐỌC cho người dùng
+  // biết đang sửa mục nào, không dùng để chỉnh sửa.
   currentNoiDung,
   currentKetQua,
   currentGhiChu,
@@ -36,7 +40,6 @@ export default function UpdateResultModal({
   const isBulk = ids.length > 1;
   const { show } = useToast();
 
-  const [noiDung, setNoiDung] = useState(currentNoiDung ?? "");
   const [ketQua, setKetQua] = useState(currentKetQua ?? "");
   const [ghiChu, setGhiChu] = useState(currentGhiChu ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,22 +47,17 @@ export default function UpdateResultModal({
   // Reset lại giá trị hiển thị mỗi lần mở modal (vì modal này được tái sử dụng, không unmount)
   useEffect(() => {
     if (isOpen) {
-      setNoiDung(currentNoiDung ?? "");
       setKetQua(currentKetQua ?? "");
       setGhiChu(currentGhiChu ?? "");
     }
-  }, [isOpen, currentNoiDung, currentKetQua, currentGhiChu]);
+  }, [isOpen, currentKetQua, currentGhiChu]);
 
   async function handleSave() {
-    if (!isBulk && !noiDung.trim()) {
-      show("error", "Không thể lưu", "Nội dung không được để trống");
-      return;
-    }
     setIsSubmitting(true);
     try {
       await updateKetQuaGhiChu(ids, {
-        // Hàng loạt: không sửa nội dung từng dòng khác nhau cùng lúc.
-        noiDung: isBulk ? null : noiDung,
+        // Không còn cho sửa Nội dung từ modal này nữa -> luôn truyền null (giữ nguyên).
+        noiDung: null,
         // Hàng loạt: để trống nghĩa là "giữ nguyên" cho từng dòng (tránh xoá mất dữ liệu cũ hàng
         // loạt); sửa 1 dòng: để trống nghĩa là chủ động xoá trắng.
         ketQua: isBulk && !ketQua.trim() ? null : ketQua,
@@ -78,10 +76,10 @@ export default function UpdateResultModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[584px] p-5 lg:p-10">
       <h4 className="mb-1 text-lg font-medium text-gray-800 dark:text-white/90">
-        Cập nhật {isBulk ? "hàng loạt" : "nội dung / "}kết quả / ghi chú
+        Cập nhật kết quả / ghi chú{isBulk && " hàng loạt"}
       </h4>
       {isBulk && (
-        <p className="mb-6 text-sm text-gray-400">
+        <p className="mb-4 text-sm text-gray-400">
           Đang áp dụng cho {ids.length} mục đã chọn. Để trống ô nào nghĩa là giữ nguyên giá trị cũ
           của ô đó.
         </p>
@@ -94,19 +92,19 @@ export default function UpdateResultModal({
       )}
 
       <div className="space-y-5">
-        {!isBulk && (
+        {/* Nội dung gốc — CHỈ ĐỌC, hiển thị dạng nhãn/văn bản tĩnh thuần tuý (KHÔNG phải input/
+            textarea), chỉ để biết đang cập nhật đúng mục nào. Vì đây không phải 1 form control nên
+            không có gì để can thiệp qua F12/devtools — giá trị này chưa bao giờ được đọc lại hay
+            gửi lên server (handleSave() luôn gửi noiDung: null, xem bên dưới). */}
+        {!isBulk && currentNoiDung && (
           <div>
-            <Label>
-              Nội dung <span className="text-error-500">*</span>
-            </Label>
-            <textarea
-              value={noiDung}
-              onChange={(e) => setNoiDung(e.target.value)}
-              rows={3}
-              className="h-auto w-full resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
+            <Label>Nội dung</Label>
+            <p className="whitespace-pre-wrap break-words rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-800 dark:bg-success-500/10 dark:text-success-300">
+              {currentNoiDung}
+            </p>
           </div>
         )}
+
         <div>
           <Label>Kết quả</Label>
           <Input value={ketQua} onChange={(e) => setKetQua(e.target.value)} />

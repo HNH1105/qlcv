@@ -208,6 +208,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
 
       <UpdateResultModal
         isOpen={isBulkUpdateOpen}
+        showChuyenPhongNote={false}
         onClose={() => setIsBulkUpdateOpen(false)}
         ids={selectedIds}
         onUpdated={() => {
