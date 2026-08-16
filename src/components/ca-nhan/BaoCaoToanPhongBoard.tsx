@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWeekInfo, getWeekDateRangeLabel } from "@/lib/week";
-import { getKeHoachToanPhong, convertCaNhanToPhong, type KeHoachToanPhongRow } from "@/lib/actions/ke-hoach";
+import { getKeHoachToanPhong, danhDauLaCuaPhong, type KeHoachRow } from "@/lib/actions/ke-hoach";
 import WeekSelect from "./WeekSelect";
 import ToanBoPhongList from "./ToanBoPhongList";
 import ToastProvider, { useToast } from "./ToastProvider";
@@ -24,7 +24,7 @@ function Content() {
   const { show } = useToast();
   const [nam, setNam] = useState(namHienTai);
   const [tuan, setTuan] = useState(tuanHienTai);
-  const [rows, setRows] = useState<KeHoachToanPhongRow[]>([]);
+  const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const reload = useCallback(() => {
@@ -42,7 +42,7 @@ function Content() {
 
   async function handleConvert(id: number) {
     try {
-      await convertCaNhanToPhong(id);
+      await danhDauLaCuaPhong(id);
       show("success", "Đã chuyển thành công", "Đã chuyển thành Báo cáo Phòng");
       reload();
     } catch (e) {

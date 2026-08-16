@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Checkbox from "@/components/form/input/Checkbox";
 import Button from "@/components/ui/button/Button";
 import NguoiPhoiHopSelect from "./NguoiPhoiHopSelect";
+import DatePicker from "@/components/form/date-picker";
 import { submitKeHoachCaNhan } from "@/lib/actions/ke-hoach";
 import { getNhanVienList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
@@ -48,6 +49,13 @@ export default function AddKeHoachBaoCaoModal({
   const [noiDung, setNoiDung] = useState("");
   const [ketQua, setKetQua] = useState("");
   const [ghiChu, setGhiChu] = useState("");
+  // Hạn xử lý — CHỈ có ở Kế hoạch, mặc định để trống (không có hạn). Dùng string "yyyy-mm-dd" —
+  // đúng dateFormat mà DatePicker (flatpickr) component có sẵn của dự án đang dùng.
+  const [hanXuLy, setHanXuLy] = useState("");
+  // DatePicker có sẵn không hỗ trợ "xoá về trống" (flatpickr giữ nguyên text trong DOM input khi
+  // defaultDate đổi thành undefined lúc re-init) — dùng key ép React unmount/remount lại hẳn
+  // component mỗi khi cần xoá sạch, đảm bảo input hiện đúng rỗng.
+  const [dateKey, setDateKey] = useState(0);
   // Mặc định: Kế hoạch BẬT SẴN (đa số cần chuyển ngay), Báo cáo TẮT SẴN (tính năng Báo cáo Phòng
   // bên "Phòng" chưa làm xong, để mặc định tắt tránh tạo dữ liệu thừa ngoài ý muốn).
   const [chuyenThanhPhong, setChuyenThanhPhong] = useState(!isBaoCao);
@@ -68,6 +76,8 @@ export default function AddKeHoachBaoCaoModal({
     setModalTuan(tuan);
     setChuyenThanhPhong(!isBaoCao);
     setShowPhoiHop(false);
+    setHanXuLy("");
+    setDateKey((k) => k + 1);
   }, [isOpen, nam, tuan, isBaoCao]);
 
   // Danh sách "Tuần" hiển thị trong modal — KHÔNG còn dropdown "Năm" riêng:
@@ -91,6 +101,10 @@ export default function AddKeHoachBaoCaoModal({
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
 
+  const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
+    setHanXuLy(dateStr);
+  }, []);
+
   function resetAndClose() {
     setNoiDung("");
     setKetQua("");
@@ -98,6 +112,8 @@ export default function AddKeHoachBaoCaoModal({
     setChuyenThanhPhong(!isBaoCao);
     setSelectedPhoiHop([]);
     setShowPhoiHop(false);
+    setHanXuLy("");
+    setDateKey((k) => k + 1);
     setError(null);
     onClose();
   }
@@ -118,7 +134,8 @@ export default function AddKeHoachBaoCaoModal({
         ketQua,
         ghiChu,
         nguoiPhoiHopIds: selectedPhoiHop,
-        chuyenThanhKeHoachPhong: chuyenThanhPhong,
+        danhDauLaCuaPhong: chuyenThanhPhong,
+        hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
       });
       show(
         "success",
@@ -149,12 +166,14 @@ export default function AddKeHoachBaoCaoModal({
       )}
 
       <div className="space-y-5">
-        {/* Bỏ khung tô màu + câu hỏi "Nhập ... cho tuần nào?" — chỉ còn 1 dropdown Tuần gọn, đặt
-            cùng hàng với nút "+ Thêm người phối hợp" (người phối hợp mặc định ẩn, bấm nút mới hiện
-            ra bên dưới) để tiết kiệm chỗ cho phần lớn trường hợp không cần phối hợp ai. */}
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Tuần</label>
+        {/* Bỏ khung tô màu + câu hỏi "Nhập ... cho tuần nào?" — Tuần / Hạn xử lý / nút Thêm người
+            phối hợp nằm CHUNG 1 HÀNG, cùng chiều cao (mỗi cột chỉ có "label + control", KHÔNG kèm
+            caption phụ bên trong để items-end canh đều nhau — caption "Từ ngày..." dời xuống dưới
+            cả hàng, dùng chung cho hàng thay vì lồng riêng trong cột Tuần như trước, vì lồng riêng
+            làm cột Tuần cao hơn hẳn 2 cột kia, khiến items-end canh lệch, nhìn rất khó chịu). */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-[140px] shrink-0">
+            <Label>Tuần</Label>
             <select
               value={`${modalNam}-${modalTuan}`}
               onChange={(e) => {
@@ -162,7 +181,7 @@ export default function AddKeHoachBaoCaoModal({
                 setModalNam(n);
                 setModalTuan(t);
               }}
-              className="h-10 min-w-[160px] rounded-lg border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
               {tuanOptions.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -170,21 +189,33 @@ export default function AddKeHoachBaoCaoModal({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
-              Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
-            </p>
           </div>
+
+          {!isBaoCao && (
+            <div key={dateKey} className="w-[150px] shrink-0">
+              <DatePicker
+                id="han-xu-ly-ca-nhan"
+                label="Hạn xử lý (không bắt buộc)"
+                placeholder="Chọn ngày..."
+                defaultDate={hanXuLy || undefined}
+                onChange={handleHanXuLyChange}
+              />
+            </div>
+          )}
 
           {!showPhoiHop && (
             <button
               type="button"
               onClick={() => setShowPhoiHop(true)}
-              className="flex h-10 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
             >
               <span className="text-base leading-none">+</span> Thêm người phối hợp
             </button>
           )}
         </div>
+        <p className="-mt-3 text-xs text-gray-400">
+          Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
+        </p>
 
         {showPhoiHop && (
           <NguoiPhoiHopSelect
@@ -232,7 +263,7 @@ export default function AddKeHoachBaoCaoModal({
         <div className="flex items-center gap-2">
           <Checkbox checked={chuyenThanhPhong} onChange={setChuyenThanhPhong} />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            Đồng thời chuyển thành {isBaoCao ? "Báo cáo Phòng" : "Kế hoạch Phòng"}
+            Đồng thời đánh dấu là {isBaoCao ? "Báo cáo Phòng" : "Kế hoạch Phòng"}
           </span>
         </div>
       </div>

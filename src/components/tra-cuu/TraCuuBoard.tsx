@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CapDoKeHoach, LoaiGhiNhan } from "@prisma/client";
-import { getCurrentWeekInfo, getWeekDateRangeLabel } from "@/lib/week";
+import { LoaiGhiNhan } from "@prisma/client";
+import { getCurrentWeekInfo, getWeekDateRangeLabel, formatDateVN } from "@/lib/week";
 import { traCuuKeHoachBaoCao, type TraCuuRow } from "@/lib/actions/tra-cuu";
 import { getPhongList } from "@/lib/actions/danh-muc";
 import WeekSelect from "@/components/ca-nhan/WeekSelect";
+import ProgressBar from "@/components/ca-nhan/ProgressBar";
 import ToastProvider, { useToast } from "@/components/ca-nhan/ToastProvider";
 
 type Tab = "canhan" | "phong";
@@ -48,7 +49,7 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
       nam,
       tuan,
       loai,
-      capDo: tab === "canhan" ? CapDoKeHoach.CANHAN : CapDoKeHoach.PHONG,
+      phamVi: tab,
       maPhong: maPhongFilter === "TATCA" ? undefined : maPhongFilter,
     })
       .then(setRows)
@@ -198,12 +199,12 @@ function PhongGroup({
 function CaNhanTrongPhong({ rows, loai }: { rows: TraCuuRow[]; loai: LoaiGhiNhan }) {
   const groups: { maNV: string; hoTen: string; rows: TraCuuRow[] }[] = [];
   for (const r of rows) {
-    const key = r.nguoiTao?.maNV ?? "khac";
+    const key = r.nguoiTao.maNV;
     const last = groups.find((g) => g.maNV === key);
     if (last) {
       last.rows.push(r);
     } else {
-      groups.push({ maNV: key, hoTen: r.nguoiTao?.hoTen ?? "Không rõ", rows: [r] });
+      groups.push({ maNV: key, hoTen: r.nguoiTao.hoTen, rows: [r] });
     }
   }
 
@@ -252,7 +253,7 @@ function DanhSachMuc({
             <p className="break-words text-gray-800 dark:text-white/90">
               {i + 1}. {r.noiDung}
             </p>
-            {showNguoiNhap && r.nguoiTao && (
+            {showNguoiNhap && (
               <p className="mt-0.5 text-xs text-gray-400">Người nhập: {r.nguoiTao.hoTen}</p>
             )}
             {r.ketQua && (
@@ -265,6 +266,22 @@ function DanhSachMuc({
             )}
             {r.ghiChu && (
               <p className="mt-0.5 text-xs italic text-gray-400">Ghi chú: {r.ghiChu}</p>
+            )}
+            {isKeHoach && r.hanXuLy && (
+              <p
+                className={`mt-0.5 text-xs font-medium ${
+                  !r.daHoanThanh && new Date(r.hanXuLy) < new Date()
+                    ? "text-error-600"
+                    : "text-gray-400"
+                }`}
+              >
+                Hạn xử lý: {formatDateVN(new Date(r.hanXuLy))}
+              </p>
+            )}
+            {isKeHoach && r.tienDo != null && r.tienDo > 0 && (
+              <div className="mt-1 max-w-[240px]">
+                <ProgressBar percent={r.tienDo} />
+              </div>
             )}
           </div>
         </div>

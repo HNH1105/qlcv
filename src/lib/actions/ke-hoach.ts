@@ -3,7 +3,21 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
-import { CapDoKeHoach, LoaiGhiNhan } from "@prisma/client";
+import { LoaiGhiNhan } from "@prisma/client";
+
+// ==========================================================================================
+// ====================                  ĐỌC THÊM                        =================
+// ==========================================================================================
+// File này đã được VIẾT LẠI HOÀN TOÀN theo schema mới (bỏ capDo/nguonId, thêm laCuaCaNhan/
+// laCuaPhong). Khác biệt cốt lõi so với bản cũ:
+// - TRƯỚC: "chuyển thành Phòng" = TẠO 1 dòng MỚI (capDo=PHONG) trỏ nguonId về dòng cá nhân gốc —
+//   2 dòng phải giữ đồng bộ nhau bằng code (nguồn gây conflict dữ liệu bác gặp phải).
+// - NAY: "chuyển thành Phòng" = chỉ set laCuaPhong=true NGAY TRÊN DÒNG ĐÓ — không còn dòng thứ 2,
+//   không còn gì phải đồng bộ. Cùng 1 nội dung/kết quả/ghi chú hiển thị ở cả 2 nơi (Cá nhân VÀ
+//   Phòng) vì đó là CÙNG 1 DÒNG.
+// - "Loại khỏi phòng" = set laCuaPhong=false, laCuaCaNhan=true — không phân biệt dòng đó vốn dĩ có
+//   mặt ở cá nhân hay không (khác hẳn 2 nhánh TH1/TH2 phức tạp ở bản cũ).
+// - Mọi query đều phải lọc isDeleted:false (soft-delete, không xoá vật lý nữa).
 
 export type KeHoachRow = {
   id: number;
@@ -11,27 +25,68 @@ export type KeHoachRow = {
   ketQua: string | null;
   ghiChu: string | null;
   daHoanThanh: boolean;
-  daChuyenPhong: boolean; // true nếu đã có bản Kế hoạch Phòng được tạo từ dòng này
+  laCuaCaNhan: boolean;
+  laCuaPhong: boolean;
+  hanXuLy: Date | null; // chỉ có ý nghĩa với Kế hoạch
+  tienDo: number | null; // chỉ có ý nghĩa với Kế hoạch; null = chưa nhập (khác 0 = đã nhập, đang 0%)
   nguoiPhoiHop: { maNV: string; hoTen: string }[];
   taoLuc: Date;
   ngayCapNhat: Date;
   nguoiCapNhat: { maNV: string; hoTen: string } | null;
+  // Người sở hữu/người nhập — LUÔN CÓ (maNV bắt buộc từ schema mới). Dùng để hiển thị "Người tạo"
+  // ở bảng Phòng, và để gom nhóm theo người ở các màn xem tổng hợp/tra cứu.
+  nguoiTao: { maNV: string; hoTen: string };
+  // Audit "đánh dấu/loại khỏi phòng" — chỉ có giá trị nếu đã từng xảy ra, chỉ lưu LẦN GẦN NHẤT.
+  nguoiDanhDauPhong: { maNV: string; hoTen: string } | null;
+  thoiGianDanhDauPhong: Date | null;
+  nguoiLoaiKhoiPhong: { maNV: string; hoTen: string } | null;
+  thoiGianLoaiKhoiPhong: Date | null;
 };
 
-// Dòng kế hoạch của TOÀN PHÒNG — dùng riêng cho tab "Toàn bộ" (chỉ lãnh đạo phòng/đơn vị xem được),
-// giống hệt KeHoachRow nhưng có thêm thông tin người thực hiện (chuyên viên) vì đây là xem của
-// nhiều người khác nhau trong phòng, không riêng người đang đăng nhập.
-export type KeHoachToanPhongRow = KeHoachRow & {
-  nguoiThucHien: { maNV: string; hoTen: string } | null;
-};
+// GHI CHÚ CHO VÒNG SỬA UI SẮP TỚI: 3 type cũ (KeHoachRow/KeHoachToanPhongRow/KeHoachPhongRow) giờ
+// gộp làm 1 vì mọi dòng đều luôn có nguoiTao (maNV bắt buộc) — không còn phân biệt cấu trúc dữ liệu
+// theo ngữ cảnh xem nữa, chỉ khác nhau ở ĐIỀU KIỆN LỌC (laCuaCaNhan/laCuaPhong) lúc query.
 
-// Dòng Kế hoạch/Báo cáo CẤP PHÒNG (capDo=PHONG) — dùng cho 2 màn hình mới "/phong/ke-hoach" và
-// "/phong/bao-cao". Khác KeHoachRow (cá nhân) ở chỗ có thêm `nguoiTao`: vì ở cấp phòng, nhiều
-// người khác nhau trong phòng có thể là người tạo ra dòng đó (tự nhập trực tiếp, hoặc do được
-// chuyển từ kế hoạch/báo cáo cá nhân của ai đó) — cần hiển thị rõ trên card "của ai tạo".
-export type KeHoachPhongRow = KeHoachRow & {
-  nguoiTao: { maNV: string; hoTen: string } | null;
-};
+const KE_HOACH_INCLUDE = {
+  nhanVien: { select: { maNV: true, hoTen: true } },
+  nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
+  nguoiCapNhat: { select: { maNV: true, hoTen: true } },
+  nguoiDanhDauPhong: { select: { maNV: true, hoTen: true } },
+  nguoiLoaiKhoiPhong: { select: { maNV: true, hoTen: true } },
+} as const;
+
+type RowWithIncludes = Awaited<ReturnType<typeof prisma.keHoachTuan.findFirstOrThrow<{
+  include: typeof KE_HOACH_INCLUDE;
+}>>>;
+
+function mapRow(r: RowWithIncludes): KeHoachRow {
+  return {
+    id: r.id,
+    noiDung: r.noiDung,
+    ketQua: r.ketQua,
+    ghiChu: r.ghiChu,
+    daHoanThanh: r.daHoanThanh,
+    laCuaCaNhan: r.laCuaCaNhan,
+    laCuaPhong: r.laCuaPhong,
+    hanXuLy: r.hanXuLy,
+    tienDo: r.tienDo,
+    nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
+    taoLuc: r.taoLuc,
+    ngayCapNhat: r.ngayCapNhat,
+    nguoiCapNhat: r.nguoiCapNhat
+      ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
+      : null,
+    nguoiTao: { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen },
+    nguoiDanhDauPhong: r.nguoiDanhDauPhong
+      ? { maNV: r.nguoiDanhDauPhong.maNV, hoTen: r.nguoiDanhDauPhong.hoTen }
+      : null,
+    thoiGianDanhDauPhong: r.thoiGianDanhDauPhong,
+    nguoiLoaiKhoiPhong: r.nguoiLoaiKhoiPhong
+      ? { maNV: r.nguoiLoaiKhoiPhong.maNV, hoTen: r.nguoiLoaiKhoiPhong.hoTen }
+      : null,
+    thoiGianLoaiKhoiPhong: r.thoiGianLoaiKhoiPhong,
+  };
+}
 
 function revalidateAllLienQuan() {
   revalidatePath("/ca-nhan/ke-hoach");
@@ -40,7 +95,7 @@ function revalidateAllLienQuan() {
   revalidatePath("/phong/bao-cao");
 }
 
-// ==================== NHẬP (1 mục/lần — đúng theo modal Thêm mới) ====================
+// ==================== NHẬP (CÁ NHÂN — modal Thêm mới) ====================
 export async function submitKeHoachCaNhan(params: {
   nam: number;
   tuan: number;
@@ -49,26 +104,33 @@ export async function submitKeHoachCaNhan(params: {
   ketQua?: string;
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
-  // Trước đây field này chỉ có tác dụng khi loai === KEHOACH — nay áp dụng cho cả BAOCAO (checkbox
-  // "Đồng thời chuyển thành Báo cáo Phòng" trong modal Thêm báo cáo), giữ tên cũ để không phải sửa
-  // chỗ gọi, nhưng bản chất giờ là "chuyển thành [Kế hoạch|Báo cáo] Phòng" tuỳ theo params.loai.
-  chuyenThanhKeHoachPhong?: boolean;
+  hanXuLy?: Date | null;
+  // Đánh dấu NGAY LÚC TẠO là cũng thuộc về Phòng — TRƯỚC ĐÂY tạo thêm 1 dòng PHONG riêng, NAY chỉ
+  // set laCuaPhong=true ngay trên dòng vừa tạo (1 lần insert duy nhất, không còn insert thứ 2).
+  danhDauLaCuaPhong?: boolean;
 }) {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
   if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  const laCuaPhong = !!params.danhDauLaCuaPhong;
 
   const created = await prisma.keHoachTuan.create({
     data: {
       nam: params.nam,
       tuan: params.tuan,
       loai: params.loai,
-      capDo: CapDoKeHoach.CANHAN,
       maPhong: user.maPhong,
       maNV: user.maNV,
       noiDung,
       ketQua: params.ketQua?.trim() || null,
       ghiChu: params.ghiChu?.trim() || null,
+      hanXuLy: params.hanXuLy ?? null,
+      laCuaCaNhan: true,
+      laCuaPhong,
+      // Nếu đánh dấu luôn là của Phòng ngay lúc tạo, ghi audit luôn trong CÙNG 1 lần insert.
+      nguoiDanhDauPhongId: laCuaPhong ? user.maNV : null,
+      thoiGianDanhDauPhong: laCuaPhong ? new Date() : null,
       nguoiCapNhatId: user.maNV,
       nguoiPhoiHop:
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
@@ -77,114 +139,13 @@ export async function submitKeHoachCaNhan(params: {
     },
   });
 
-  // Đồng thời tạo bản Kế hoạch/Báo cáo Phòng — giống hệt nút "Chuyển thành ... Phòng" bên Apps
-  // Script, chỉ khác là làm ngay lúc nhập nếu người dùng tick chọn, không cần vào tab Xem lại thao
-  // tác thêm. Dùng params.loai thay vì hard-code "KEHOACH" để áp dụng được cho cả Báo cáo.
-  if (params.chuyenThanhKeHoachPhong) {
-    await prisma.keHoachTuan.create({
-      data: {
-        nam: params.nam,
-        tuan: params.tuan,
-        loai: params.loai,
-        capDo: CapDoKeHoach.PHONG,
-        maPhong: user.maPhong,
-        maNV: user.maNV,
-        noiDung,
-        nguonId: created.id,
-        nguoiCapNhatId: user.maNV,
-      },
-    });
-  }
-
   revalidateAllLienQuan();
   return { success: true, id: created.id };
 }
 
-// ==================== XEM LẠI (chỉ đúng người đang đăng nhập, đúng tuần/loại) ====================
-export async function getKeHoachCaNhan(
-  nam: number,
-  tuan: number,
-  loai: LoaiGhiNhan
-): Promise<KeHoachRow[]> {
-  const user = await requireSession();
-
-  const rows = await prisma.keHoachTuan.findMany({
-    where: { nam, tuan, loai, capDo: CapDoKeHoach.CANHAN, maNV: user.maNV },
-    orderBy: { id: "asc" },
-    include: {
-      nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
-      nguoiCapNhat: { select: { maNV: true, hoTen: true } },
-      banChuyen: { select: { id: true } }, // các bản Kế hoạch Phòng đã tạo TỪ dòng này (nếu có)
-    },
-  });
-
-  return rows.map((r) => ({
-    id: r.id,
-    noiDung: r.noiDung,
-    ketQua: r.ketQua,
-    ghiChu: r.ghiChu,
-    daHoanThanh: r.daHoanThanh,
-    daChuyenPhong: r.banChuyen.length > 0,
-    nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
-    taoLuc: r.taoLuc,
-    ngayCapNhat: r.ngayCapNhat,
-    nguoiCapNhat: r.nguoiCapNhat
-      ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
-      : null,
-  }));
-}
-
-// ==================== XEM TOÀN BỘ KẾ HOẠCH CỦA PHÒNG (chỉ lãnh đạo phòng/đơn vị) ====================
-// Dùng cho tab "Toàn bộ" — lãnh đạo xem hết kế hoạch cá nhân của mọi chuyên viên trong phòng mình,
-// để có thể chuyển bất kỳ dòng nào sang Kế hoạch Phòng.
-//
-// LƯU Ý: hàm này giả định requireSession() trả về kèm field `quyen` (Quyen enum: USER |
-// LANHDAOPHONG | LANHDAODONVI) giống hệt field `quyen` trên model NhanVien. Nếu session hiện tại
-// CHƯA có field này, cần bổ sung vào chỗ tạo session tương ứng thì tab "Toàn bộ" mới hoạt động
-// đúng quyền.
-export async function getKeHoachToanPhong(
-  nam: number,
-  tuan: number,
-  loai: LoaiGhiNhan
-): Promise<KeHoachToanPhongRow[]> {
-  const user = await requireSession();
-
-  if (user.quyen !== "LANHDAOPHONG" && user.quyen !== "LANHDAODONVI") {
-    throw new Error("Bạn không có quyền xem toàn bộ kế hoạch của phòng");
-  }
-
-  const rows = await prisma.keHoachTuan.findMany({
-    where: { nam, tuan, loai, capDo: CapDoKeHoach.CANHAN, maPhong: user.maPhong },
-    orderBy: [{ maNV: "asc" }, { id: "asc" }],
-    include: {
-      nhanVien: { select: { maNV: true, hoTen: true } },
-      nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
-      nguoiCapNhat: { select: { maNV: true, hoTen: true } },
-      banChuyen: { select: { id: true } },
-    },
-  });
-
-  return rows.map((r) => ({
-    id: r.id,
-    noiDung: r.noiDung,
-    ketQua: r.ketQua,
-    ghiChu: r.ghiChu,
-    daHoanThanh: r.daHoanThanh,
-    daChuyenPhong: r.banChuyen.length > 0,
-    nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
-    taoLuc: r.taoLuc,
-    ngayCapNhat: r.ngayCapNhat,
-    nguoiCapNhat: r.nguoiCapNhat
-      ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
-      : null,
-    nguoiThucHien: r.nhanVien ? { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen } : null,
-  }));
-}
-
 // ==================== NHẬP TRỰC TIẾP Ở CẤP PHÒNG (2 màn "/phong/ke-hoach" và "/phong/bao-cao") ===
-// Khác submitKeHoachCaNhan ở chỗ: tạo thẳng capDo=PHONG (không phải CANHAN), maNV lưu lại là NGƯỜI
-// TẠO (để hiển thị "Người tạo: ..." trên card, vì ở cấp phòng có nhiều người khác nhau cùng nhập).
-// Không có tuỳ chọn "chuyển thành phòng" vì bản thân dòng này đã là cấp phòng rồi.
+// laCuaCaNhan=false: mục này KHÔNG hiện trong danh sách Kế hoạch/Báo cáo cá nhân của người tạo —
+// đúng bản chất "nhập thẳng cho phòng", khác với nhập cá nhân rồi tự đánh dấu thêm.
 export async function submitKeHoachPhong(params: {
   nam: number;
   tuan: number;
@@ -193,6 +154,7 @@ export async function submitKeHoachPhong(params: {
   ketQua?: string;
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
+  hanXuLy?: Date | null;
 }) {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
@@ -203,12 +165,16 @@ export async function submitKeHoachPhong(params: {
       nam: params.nam,
       tuan: params.tuan,
       loai: params.loai,
-      capDo: CapDoKeHoach.PHONG,
       maPhong: user.maPhong,
       maNV: user.maNV,
       noiDung,
       ketQua: params.ketQua?.trim() || null,
       ghiChu: params.ghiChu?.trim() || null,
+      hanXuLy: params.hanXuLy ?? null,
+      laCuaCaNhan: false,
+      laCuaPhong: true,
+      nguoiDanhDauPhongId: user.maNV,
+      thoiGianDanhDauPhong: new Date(),
       nguoiCapNhatId: user.maNV,
       nguoiPhoiHop:
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
@@ -221,79 +187,111 @@ export async function submitKeHoachPhong(params: {
   return { success: true, id: created.id };
 }
 
-// ==================== XEM KẾ HOẠCH/BÁO CÁO CẤP PHÒNG (mọi người trong phòng đều xem/thao tác) ===
-// KHÔNG giới hạn theo quyen (khác getKeHoachToanPhong ở trên vốn chỉ dành cho lãnh đạo xem kế
-// hoạch CÁ NHÂN của người khác) — đây là bảng CHUNG của cả phòng, ai trong phòng cũng xem và thao
-// tác được (đánh dấu hoàn thành / cập nhật kết quả), miễn đăng nhập đúng phòng đó. Vết cập nhật vẫn
-// lưu đúng người thao tác qua nguoiCapNhatId, hiển thị được "ai vừa cập nhật" như bên cá nhân.
+// ==================== XEM: KẾ HOẠCH/BÁO CÁO CÁ NHÂN CỦA CHÍNH MÌNH ====================
+export async function getKeHoachCaNhan(
+  nam: number,
+  tuan: number,
+  loai: LoaiGhiNhan
+): Promise<KeHoachRow[]> {
+  const user = await requireSession();
+
+  const rows = await prisma.keHoachTuan.findMany({
+    where: { nam, tuan, loai, maNV: user.maNV, laCuaCaNhan: true, isDeleted: false },
+    orderBy: { id: "asc" },
+    include: KE_HOACH_INCLUDE,
+  });
+
+  return rows.map(mapRow);
+}
+
+// ==================== XEM: TOÀN BỘ KẾ HOẠCH/BÁO CÁO CÁ NHÂN CỦA CẢ PHÒNG (chỉ lãnh đạo) ========
+// Dùng cho "Cá nhân" -> "Kế hoạch/Báo cáo (Toàn bộ phòng)" — lãnh đạo xem hết kế hoạch/báo cáo cá
+// nhân (laCuaCaNhan=true) của mọi người trong phòng mình.
+export async function getKeHoachToanPhong(
+  nam: number,
+  tuan: number,
+  loai: LoaiGhiNhan
+): Promise<KeHoachRow[]> {
+  const user = await requireSession();
+
+  if (user.quyen !== "LANHDAOPHONG" && user.quyen !== "LANHDAODONVI") {
+    throw new Error("Bạn không có quyền xem toàn bộ kế hoạch của phòng");
+  }
+
+  const rows = await prisma.keHoachTuan.findMany({
+    where: { nam, tuan, loai, maPhong: user.maPhong, laCuaCaNhan: true, isDeleted: false },
+    orderBy: [{ nhanVien: { thuTu: "asc" } }, { id: "asc" }],
+    include: KE_HOACH_INCLUDE,
+  });
+
+  return rows.map(mapRow);
+}
+
+// ==================== XEM: KẾ HOẠCH/BÁO CÁO CẤP PHÒNG (mọi người trong phòng xem/thao tác) =====
 export async function getKeHoachPhong(
   nam: number,
   tuan: number,
   loai: LoaiGhiNhan
-): Promise<KeHoachPhongRow[]> {
+): Promise<KeHoachRow[]> {
   const user = await requireSession();
 
   const rows = await prisma.keHoachTuan.findMany({
-    where: { nam, tuan, loai, capDo: CapDoKeHoach.PHONG, maPhong: user.maPhong },
+    where: { nam, tuan, loai, maPhong: user.maPhong, laCuaPhong: true, isDeleted: false },
     orderBy: { id: "asc" },
-    include: {
-      nhanVien: { select: { maNV: true, hoTen: true } }, // người tạo
-      nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
-      nguoiCapNhat: { select: { maNV: true, hoTen: true } },
-      banChuyen: { select: { id: true } },
-    },
+    include: KE_HOACH_INCLUDE,
   });
 
-  return rows.map((r) => ({
-    id: r.id,
-    noiDung: r.noiDung,
-    ketQua: r.ketQua,
-    ghiChu: r.ghiChu,
-    daHoanThanh: r.daHoanThanh,
-    daChuyenPhong: r.banChuyen.length > 0, // giữ field để khớp type KeHoachRow, không dùng ở UI Phòng
-    nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
-    taoLuc: r.taoLuc,
-    ngayCapNhat: r.ngayCapNhat,
-    nguoiCapNhat: r.nguoiCapNhat
-      ? { maNV: r.nguoiCapNhat.maNV, hoTen: r.nguoiCapNhat.hoTen }
-      : null,
-    nguoiTao: r.nhanVien ? { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen } : null,
-  }));
+  return rows.map(mapRow);
 }
 
 // ==================== ĐÁNH DẤU HOÀN THÀNH ====================
+// TRƯỚC ĐÂY: phải updateMany 2 lần (dòng gốc + dòng con nguonId trỏ tới). NAY: chỉ 1 lần, vì không
+// còn dòng con nào cả — laCuaCaNhan/laCuaPhong chỉ là 2 cờ trên CÙNG 1 dòng.
 export async function markHoanThanh(ids: number[], value: boolean) {
-  await requireSession();
+  const user = await requireSession();
   if (ids.length === 0) return { success: true, updated: 0 };
 
   const result = await prisma.keHoachTuan.updateMany({
-    where: { id: { in: ids } },
-    data: { daHoanThanh: value },
-  });
-
-  // Đồng thời đánh dấu hoàn thành cho các bản Kế hoạch Phòng tương ứng (đã được tạo ra từ những
-  // dòng này) — áp dụng tự động cho các mục "Đã chuyển Phòng", không cần chọn thêm gì (đúng hành
-  // vi mặc định của bản Apps Script cũ).
-  await prisma.keHoachTuan.updateMany({
-    where: { nguonId: { in: ids } },
-    data: { daHoanThanh: value },
+    where: { id: { in: ids }, isDeleted: false },
+    // Đánh dấu HOÀN THÀNH -> tự set luôn tienDo=100 (đúng logic: đã xong thì tiến độ phải đầy).
+    // Bỏ đánh dấu (value=false) thì KHÔNG tự giảm tienDo lại — không có cách nào biết chắc tiến độ
+    // "thật" trước đó là bao nhiêu, để nguyên tránh mất dữ liệu người dùng đã nhập tay.
+    data: {
+      daHoanThanh: value,
+      nguoiCapNhatId: user.maNV,
+      ...(value ? { tienDo: 100 } : {}),
+    },
   });
 
   revalidateAllLienQuan();
   return { success: true, updated: result.count };
 }
 
-// ==================== CẬP NHẬT NỘI DUNG / KẾT QUẢ / GHI CHÚ ====================
-// Quy ước: field nào truyền `null` nghĩa là "không đổi" (giữ nguyên), truyền chuỗi (kể cả chuỗi
-// rỗng) nghĩa là "đặt lại giá trị này". Áp dụng cho cả noiDung, ketQua, ghiChu.
+// ==================== CẬP NHẬT KẾT QUẢ / GHI CHÚ / TIẾN ĐỘ ====================
+// Quy ước với ketQua/ghiChu: `null` = không đổi, chuỗi (kể cả rỗng) = đặt lại giá trị.
+// Quy ước RIÊNG cho tienDo: `undefined` = không đổi, số 0-100 = đặt lại (0 là giá trị hợp lệ nên
+// không dùng null cho "không đổi" được).
+// TRƯỚC ĐÂY: phải updateMany thêm 1 lần nữa cho dòng con (nguonId). NAY: chỉ 1 lần updateMany duy
+// nhất, vì Kết quả/Ghi chú của "bản Phòng" và "bản Cá nhân" giờ LÀ CÙNG 1 CỘT DỮ LIỆU.
 export async function updateKetQuaGhiChu(
   ids: number[],
-  params: { noiDung?: string | null; ketQua: string | null; ghiChu: string | null }
+  params: {
+    noiDung?: string | null;
+    ketQua: string | null;
+    ghiChu: string | null;
+    tienDo?: number;
+  }
 ) {
   const user = await requireSession();
   if (ids.length === 0) return { success: true, updated: 0 };
 
-  const data: { noiDung?: string; ketQua?: string; ghiChu?: string; nguoiCapNhatId: string } = {
+  const data: {
+    noiDung?: string;
+    ketQua?: string;
+    ghiChu?: string;
+    tienDo?: number;
+    nguoiCapNhatId: string;
+  } = {
     nguoiCapNhatId: user.maNV,
   };
   if (params.noiDung !== null && params.noiDung !== undefined) {
@@ -303,94 +301,89 @@ export async function updateKetQuaGhiChu(
   }
   if (params.ketQua !== null) data.ketQua = params.ketQua;
   if (params.ghiChu !== null) data.ghiChu = params.ghiChu;
-
-  const result = await prisma.keHoachTuan.updateMany({ where: { id: { in: ids } }, data });
-
-  // Đồng thời cập nhật Kết quả/Ghi chú này cho Kế hoạch Phòng tương ứng (áp dụng cho các mục đã
-  // "Đã chuyển Phòng") — tự động, không cần bật thêm tuỳ chọn nào (bản Apps Script cũ có nút check
-  // riêng cho việc này, nay bỏ đi vì chuyển sang CSDL nên mặc định luôn đồng bộ).
-  // Lưu ý: KHÔNG đồng bộ noiDung sang bản Phòng — nội dung bên Phòng do lãnh đạo tự chỉnh, không
-  // để bản cá nhân ghi đè.
-  if (params.ketQua !== null || params.ghiChu !== null) {
-    const phongData: { ketQua?: string; ghiChu?: string; nguoiCapNhatId: string } = {
-      nguoiCapNhatId: user.maNV,
-    };
-    if (params.ketQua !== null) phongData.ketQua = params.ketQua;
-    if (params.ghiChu !== null) phongData.ghiChu = params.ghiChu;
-
-    await prisma.keHoachTuan.updateMany({
-      where: { nguonId: { in: ids } },
-      data: phongData,
-    });
+  if (params.tienDo !== undefined) {
+    data.tienDo = Math.max(0, Math.min(100, Math.round(params.tienDo)));
   }
+
+  const result = await prisma.keHoachTuan.updateMany({
+    where: { id: { in: ids }, isDeleted: false },
+    data,
+  });
 
   revalidateAllLienQuan();
   return { success: true, updated: result.count };
 }
 
-// ==================== CHUYỂN THÀNH KẾ HOẠCH/BÁO CÁO PHÒNG (1 dòng, từ menu hành động) ==========
-// Chống trùng: nếu dòng này đã từng được chuyển trước đó thì bỏ qua, không tạo bản thứ 2.
-//
-// TRƯỚC ĐÂY hàm này CHỈ cho phép Kế hoạch (chặn cứng Báo cáo bằng throw Error). Nay MỞ RỘNG cho cả
-// Báo cáo — giữ nguyên `row.loai` khi tạo bản Phòng thay vì hard-code "KEHOACH", để chuẩn bị sẵn
-// dữ liệu "Báo cáo Phòng" cho tính năng bên Phòng sẽ làm sau (chỉ thêm 1 dòng dữ liệu, không tốn gì
-// thêm ở tầng DB vì loai/capDo là 2 field độc lập, đã có sẵn từ trước).
-export async function convertCaNhanToPhong(id: number) {
+// ==================== ĐÁNH DẤU LÀ CỦA PHÒNG (1 dòng — tên cũ: convertCaNhanToPhong) ============
+// TRƯỚC ĐÂY: tạo 1 dòng MỚI (capDo=PHONG) trỏ nguonId về dòng này. NAY: chỉ set laCuaPhong=true
+// NGAY TRÊN DÒNG NÀY + ghi audit (nguoiDanhDauPhongId/thoiGianDanhDauPhong) — không tạo thêm gì cả.
+export async function danhDauLaCuaPhong(id: number) {
   const user = await requireSession();
 
   const row = await prisma.keHoachTuan.findUnique({ where: { id } });
-  if (!row) throw new Error("Không tìm thấy dòng này");
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+  if (row.laCuaPhong) return { success: true, alreadyMarked: true };
 
-  const daCo = await prisma.keHoachTuan.findFirst({ where: { nguonId: id } });
-  if (daCo) return { success: true, alreadyConverted: true };
-
-  await prisma.keHoachTuan.create({
+  await prisma.keHoachTuan.update({
+    where: { id },
     data: {
-      nam: row.nam,
-      tuan: row.tuan,
-      loai: row.loai,
-      capDo: CapDoKeHoach.PHONG,
-      maPhong: row.maPhong,
-      maNV: user.maNV,
-      noiDung: row.noiDung,
-      nguonId: row.id,
+      laCuaPhong: true,
+      nguoiDanhDauPhongId: user.maNV,
+      thoiGianDanhDauPhong: new Date(),
       nguoiCapNhatId: user.maNV,
     },
   });
 
   revalidateAllLienQuan();
-  return { success: true, alreadyConverted: false };
+  return { success: true, alreadyMarked: false };
 }
 
-// ==================== CHUYỂN THÀNH PHÒNG (HÀNG LOẠT — dùng cho checkbox chọn nhiều) ============
-// Cũng mở rộng tương tự convertCaNhanToPhong ở trên — không còn lọc chỉ giữ lại "KEHOACH" nữa.
-export async function convertCaNhanToPhongBulk(ids: number[]) {
+// ==================== ĐÁNH DẤU LÀ CỦA PHÒNG (HÀNG LOẠT — tên cũ: convertCaNhanToPhongBulk) =====
+export async function danhDauLaCuaPhongBulk(ids: number[]) {
   const user = await requireSession();
-  if (ids.length === 0) return { success: true, converted: 0, boQua: 0 };
+  if (ids.length === 0) return { success: true, updated: 0, boQua: 0 };
 
-  const rows = await prisma.keHoachTuan.findMany({ where: { id: { in: ids } } });
-
-  let converted = 0;
-  for (const row of rows) {
-    const daCo = await prisma.keHoachTuan.findFirst({ where: { nguonId: row.id } });
-    if (daCo) continue;
-
-    await prisma.keHoachTuan.create({
-      data: {
-        nam: row.nam,
-        tuan: row.tuan,
-        loai: row.loai,
-        capDo: CapDoKeHoach.PHONG,
-        maPhong: row.maPhong,
-        maNV: user.maNV,
-        noiDung: row.noiDung,
-        nguonId: row.id,
-        nguoiCapNhatId: user.maNV,
-      },
-    });
-    converted++;
-  }
+  const result = await prisma.keHoachTuan.updateMany({
+    where: { id: { in: ids }, isDeleted: false, laCuaPhong: false },
+    data: {
+      laCuaPhong: true,
+      nguoiDanhDauPhongId: user.maNV,
+      thoiGianDanhDauPhong: new Date(),
+      nguoiCapNhatId: user.maNV,
+    },
+  });
 
   revalidateAllLienQuan();
-  return { success: true, converted, boQua: rows.length - converted };
+  return { success: true, updated: result.count, boQua: ids.length - result.count };
+}
+
+// ==================== LOẠI KHỎI PHÒNG (chỉ lãnh đạo của ĐÚNG phòng đó) ==========================
+// TRƯỚC ĐÂY: 2 nhánh TH1/TH2 phức tạp (xoá dòng Phòng, hoặc tạo dòng Cá nhân mới rồi xoá), phải
+// $transaction, phải chèn text ghi chú thủ công. NAY: chỉ 1 update duy nhất —
+// laCuaPhong=false, laCuaCaNhan=true, ghi audit vào 2 cột riêng (không chèn text vào ghiChu nữa).
+export async function loaiKhoiPhong(id: number) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+  if (!row.laCuaPhong) throw new Error("Dòng này hiện không thuộc về Phòng");
+
+  const isLanhDao = user.quyen === "LANHDAOPHONG" || user.quyen === "LANHDAODONVI";
+  if (!isLanhDao || user.maPhong !== row.maPhong) {
+    throw new Error("Bạn không có quyền loại mục này khỏi phòng");
+  }
+
+  await prisma.keHoachTuan.update({
+    where: { id },
+    data: {
+      laCuaPhong: false,
+      laCuaCaNhan: true,
+      nguoiLoaiKhoiPhongId: user.maNV,
+      thoiGianLoaiKhoiPhong: new Date(),
+      nguoiCapNhatId: user.maNV,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true };
 }

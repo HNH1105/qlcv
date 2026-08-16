@@ -29,10 +29,11 @@ enum LoaiGhiNhan {
   BAOCAO
 }
 
-enum CapDoKeHoach {
-  CANHAN
-  PHONG
-}
+// CapDoKeHoach (CANHAN | PHONG) ĐÃ BỊ XOÁ — thay bằng 2 cờ boolean laCuaCaNhan/laCuaPhong trên
+// KeHoachTuan (xem model bên dưới). Lý do: mô hình cũ (1 dòng CANHAN sinh ra 1 dòng PHONG con qua
+// nguonId) buộc phải đồng bộ 2 bản ghi bằng tay ở tầng code mỗi khi sửa Kết quả/Ghi chú/Hoàn
+// thành/Xoá... — đây chính là nguồn gây conflict dữ liệu. Gộp lại 1 dòng duy nhất, 2 cờ độc lập,
+// không còn 2 bản ghi nào phải giữ khớp nhau nữa.
 
 // CHƯA CHỐT: HOATOC chưa được xác nhận có tồn tại trong dropdown selectNVUuTien thật hay không.
 // Giữ tạm trong enum vì thêm 1 giá trị sau này (ALTER TYPE ... ADD VALUE) dễ hơn nhiều so với việc
@@ -113,9 +114,14 @@ model NhanVien {
   taiKhoan TaiKhoan?
 
   // Kế hoạch/Báo cáo tuần
-  keHoachTuans   KeHoachTuan[]        @relation("KeHoachNguoiLienQuan")
-  keHoachCapNhat KeHoachTuan[]        @relation("KeHoachNguoiCapNhat")
-  keHoachPhoiHop KeHoachTuanPhoiHop[]
+  keHoachTuans         KeHoachTuan[]        @relation("KeHoachNguoiLienQuan")
+  keHoachCapNhat       KeHoachTuan[]        @relation("KeHoachNguoiCapNhat")
+  keHoachPhoiHop       KeHoachTuanPhoiHop[]
+  // Audit "đánh dấu/loại khỏi phòng" + soft-delete — mỗi quan hệ 1 tên riêng, không trùng 2 quan hệ
+  // KeHoachNguoiLienQuan/KeHoachNguoiCapNhat đã có ở trên.
+  keHoachDanhDauPhong  KeHoachTuan[]        @relation("KeHoachNguoiDanhDauPhong")
+  keHoachLoaiKhoiPhong KeHoachTuan[]        @relation("KeHoachNguoiLoaiKhoiPhong")
+  keHoachXoa           KeHoachTuan[]        @relation("KeHoachNguoiXoa")
 
   // Nhiệm vụ
   nhiemVuTao       NhiemVu[]             @relation("NhiemVuNguoiTao")
@@ -124,6 +130,7 @@ model NhanVien {
   nhiemVuBaoCao    NhiemVu[]             @relation("NhiemVuNguoiBaoCao")
   nhiemVuDuyet     NhiemVu[]             @relation("NhiemVuNguoiDuyet")
   nhiemVuCapNhat   NhiemVu[]             @relation("NhiemVuNguoiCapNhat")
+  nhiemVuXoa       NhiemVu[]             @relation("NhiemVuNguoiXoa")
   nhiemVuPhoiHop   NhiemVuNguoiPhoiHop[]
   nhiemVuLogs      NhiemVuLog[]
 
@@ -155,36 +162,77 @@ model TaiKhoan {
 // ==========================================================================================
 
 model KeHoachTuan {
-  id          Int          @id @default(autoincrement())
+  id          Int         @id @default(autoincrement())
   nam         Int
   tuan        Int
   loai        LoaiGhiNhan // KEHOACH | BAOCAO
-  capDo       CapDoKeHoach // CANHAN | PHONG
-  maPhong     String       @map("ma_phong")
-  maNV        String?      @map("ma_nv") // người liên quan / người nhập — bắt buộc có ý nghĩa khi capDo=CANHAN
-  noiDung     String       @map("noi_dung") @db.Text
-  ketQua      String?      @map("ket_qua") @db.Text
-  daHoanThanh Boolean      @default(false) @map("da_hoan_thanh")
-  ghiChu      String?      @map("ghi_chu") @db.Text
+  maPhong     String      @map("ma_phong")
+  maNV        String      @map("ma_nv") // người liên quan / người nhập — BẮT BUỘC (theo review: kế
+  // hoạch/báo cáo luôn phải có chủ, tránh trường hợp "loại về cá nhân" mà không biết trả cho ai)
+  noiDung     String      @map("noi_dung") @db.Text
+  ketQua      String?     @map("ket_qua") @db.Text
+  daHoanThanh Boolean     @default(false) @map("da_hoan_thanh")
+  ghiChu      String?     @map("ghi_chu") @db.Text
 
   ghiChuPhoiHop String? @map("ghi_chu_phoi_hop") // ô text tự do (giữ nguyên công dụng cột PhoiHop cũ)
 
-  nguonId        Int?     @map("nguon_id") // chỉ dùng khi capDo=PHONG: trỏ về dòng CANHAN gốc lúc convert
+  // ================= THAY CHO capDo/nguonId =================
+  // 1 dòng có thể đồng thời là của Cá nhân VÀ của Phòng (không còn 2 dòng riêng phải đồng bộ nhau
+  // qua nguonId/banChuyen nữa — đây là cách sửa gốc rễ lỗi conflict dữ liệu khi convert cũ).
+  // Quy ước: KHÔNG được cả 2 cùng false — ép bằng CHECK constraint viết tay ở migration (raw SQL,
+  // Prisma schema không hỗ trợ CHECK). Mặc định false/false để buộc mọi chỗ TẠO MỚI trong code phải
+  // set rõ ràng ít nhất 1 cờ true (nếu quên, CHECK sẽ chặn insert ngay, không âm thầm sai dữ liệu).
+  laCuaCaNhan Boolean @default(false) @map("la_cua_ca_nhan")
+  laCuaPhong  Boolean @default(false) @map("la_cua_phong")
+
+  // Hạn xử lý — CHỈ có ý nghĩa với Kế hoạch (loai=KEHOACH), Báo cáo luôn để null. Optional, không
+  // bắt buộc nhập.
+  hanXuLy DateTime? @map("han_xu_ly") @db.Date
+
+  // Tiến độ % (0-100) — CHỈ có ý nghĩa với Kế hoạch, optional. KHÔNG đặt @default(0): null nghĩa
+  // là "chưa nhập tiến độ", khác với số 0 nghĩa là "đã nhập, đang ở 0%" (theo góp ý review — vừa
+  // optional vừa default(0) trước đây gây lẫn 2 trạng thái này).
+  tienDo Int? @map("tien_do")
+
+  // ================= AUDIT "đánh dấu / loại khỏi Phòng" =================
+  // CHỈ lưu LẦN GẦN NHẤT (không phải bảng log đầy đủ) — nếu sau này cần xem toàn bộ lịch sử
+  // đánh dấu/loại bao nhiêu lần, cân nhắc thêm 1 bảng log riêng kiểu NhiemVuLog.
+  nguoiDanhDauPhongId   String?   @map("nguoi_danh_dau_phong_id")
+  thoiGianDanhDauPhong  DateTime? @map("thoi_gian_danh_dau_phong")
+  nguoiLoaiKhoiPhongId  String?   @map("nguoi_loai_khoi_phong_id")
+  thoiGianLoaiKhoiPhong DateTime? @map("thoi_gian_loai_khoi_phong")
+
+  // ================= SOFT DELETE =================
+  // Không xoá vật lý nữa — chỉ đánh dấu isDeleted=true. MỌI truy vấn ở tầng action phải tự thêm
+  // điều kiện isDeleted=false (Prisma không tự lọc field này giúp mình).
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  xoaLuc     DateTime? @map("xoa_luc")
+  nguoiXoaId String?   @map("nguoi_xoa_id")
+
   nguoiCapNhatId String?  @map("nguoi_cap_nhat_id")
   ngayCapNhat    DateTime @updatedAt @map("ngay_cap_nhat")
   taoLuc         DateTime @default(now()) @map("tao_luc")
 
-  phong        Phong        @relation(fields: [maPhong], references: [maPhong])
-  nhanVien     NhanVien?    @relation("KeHoachNguoiLienQuan", fields: [maNV], references: [maNV])
-  nguoiCapNhat NhanVien?    @relation("KeHoachNguoiCapNhat", fields: [nguoiCapNhatId], references: [maNV])
-  nguon        KeHoachTuan? @relation("KeHoachConvert", fields: [nguonId], references: [id])
-  banChuyen    KeHoachTuan[] @relation("KeHoachConvert")
+  phong              Phong     @relation(fields: [maPhong], references: [maPhong])
+  nhanVien           NhanVien  @relation("KeHoachNguoiLienQuan", fields: [maNV], references: [maNV])
+  nguoiCapNhat       NhanVien? @relation("KeHoachNguoiCapNhat", fields: [nguoiCapNhatId], references: [maNV])
+  nguoiDanhDauPhong  NhanVien? @relation("KeHoachNguoiDanhDauPhong", fields: [nguoiDanhDauPhongId], references: [maNV])
+  nguoiLoaiKhoiPhong NhanVien? @relation("KeHoachNguoiLoaiKhoiPhong", fields: [nguoiLoaiKhoiPhongId], references: [maNV])
+  nguoiXoa           NhanVien? @relation("KeHoachNguoiXoa", fields: [nguoiXoaId], references: [maNV])
 
   nguoiPhoiHop KeHoachTuanPhoiHop[] // chọn người cụ thể trong hệ thống — dùng song song với ghiChuPhoiHop
 
-  @@index([nam, tuan, loai, capDo])
-  @@index([maPhong, nam, tuan])
-  @@index([maNV, nam, tuan])
+  // capDo/nguonId/nguon/banChuyen (self-relation KeHoachConvert) ĐÃ XOÁ — xem enum CapDoKeHoach ở
+  // trên để biết lý do.
+
+  // #6 (review): bỏ [maPhong,nam,tuan] và [maNV,nam,tuan] riêng — Postgres vẫn dùng được 2 index
+  // 4-cột bên dưới cho query chỉ lọc 3 cột đầu nhờ leftmost-prefix, không cần giữ bản trùng tiền tố.
+  @@index([nam, tuan, loai])
+  @@index([maPhong, nam, tuan, laCuaPhong])
+  @@index([maNV, nam, tuan, laCuaCaNhan])
+  // #5 (review): index riêng cho isDeleted — mọi query đều lọc cột này, chưa có index sẽ chậm khi
+  // dữ liệu lớn.
+  @@index([isDeleted])
   @@map("ke_hoach_tuan")
 }
 
@@ -232,6 +280,11 @@ model NhiemVu {
   ngayCapNhat    DateTime @updatedAt @map("ngay_cap_nhat")
   nguoiCapNhatId String?  @map("nguoi_cap_nhat_id")
 
+  // ================= SOFT DELETE (mới thêm — không đổi field nào khác của NhiemVu) =================
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  xoaLuc     DateTime? @map("xoa_luc")
+  nguoiXoaId String?   @map("nguoi_xoa_id")
+
   nguoiTao       NhanVien  @relation("NhiemVuNguoiTao", fields: [nguoiTaoId], references: [maNV])
   nguoiGiao      NhanVien  @relation("NhiemVuNguoiGiao", fields: [nguoiGiaoId], references: [maNV])
   phongChuTri    Phong     @relation("NhiemVuPhongChuTri", fields: [phongChuTriId], references: [maPhong])
@@ -239,6 +292,7 @@ model NhiemVu {
   nguoiBaoCao    NhanVien? @relation("NhiemVuNguoiBaoCao", fields: [nguoiBaoCaoHoanThanhId], references: [maNV])
   nguoiDuyet     NhanVien? @relation("NhiemVuNguoiDuyet", fields: [nguoiDuyetId], references: [maNV])
   nguoiCapNhat   NhanVien? @relation("NhiemVuNguoiCapNhat", fields: [nguoiCapNhatId], references: [maNV])
+  nguoiXoa       NhanVien? @relation("NhiemVuNguoiXoa", fields: [nguoiXoaId], references: [maNV])
 
   phongPhoiHop NhiemVuPhong[]
   nguoiPhoiHop NhiemVuNguoiPhoiHop[]
@@ -248,6 +302,7 @@ model NhiemVu {
   @@index([phongChuTriId])
   @@index([nguoiXuLyChinhId])
   @@index([hanXuLy])
+  @@index([isDeleted])
   @@map("nhiem_vu")
 }
 

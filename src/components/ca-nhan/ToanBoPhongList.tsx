@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeHoachToanPhongRow } from "@/lib/actions/ke-hoach";
+import type { KeHoachRow } from "@/lib/actions/ke-hoach";
 
 // Dùng chung cho 2 trang mới ở menu lãnh đạo: "Kế hoạch (Toàn bộ phòng)" và "Báo cáo (Toàn bộ
 // phòng)". Trước đây phần này nằm trong tab "Toàn bộ" của KeHoachBaoCaoBoard — nay tách hẳn ra
@@ -17,7 +17,7 @@ export default function ToanBoPhongList({
   onConvert,
   loai,
 }: {
-  rows: KeHoachToanPhongRow[];
+  rows: KeHoachRow[];
   onConvert?: (id: number) => void;
   // Báo cáo KHÔNG có khái niệm "hoàn thành/chưa hoàn thành" (đó là field mặc định false trong DB,
   // chỉ có ý nghĩa với Kế hoạch) — dùng loai để ẩn dòng trạng thái này khi render Báo cáo, tránh
@@ -28,12 +28,13 @@ export default function ToanBoPhongList({
     return <p className="py-12 text-center text-gray-400">Chưa có dữ liệu nào trong tuần này.</p>;
   }
 
-  // Gom nhóm theo nhân viên cho dễ theo dõi
-  const groups = new Map<string, { hoTen: string; items: KeHoachToanPhongRow[] }>();
+  // Gom nhóm theo nhân viên cho dễ theo dõi (nguoiTao luôn có giá trị vì maNV bắt buộc từ schema
+  // mới, không cần optional chaining/fallback "Không rõ" như bản cũ nữa).
+  const groups = new Map<string, { hoTen: string; items: KeHoachRow[] }>();
   for (const r of rows) {
-    const key = r.nguoiThucHien?.maNV ?? "khac";
+    const key = r.nguoiTao.maNV;
     if (!groups.has(key)) {
-      groups.set(key, { hoTen: r.nguoiThucHien?.hoTen ?? "Không rõ", items: [] });
+      groups.set(key, { hoTen: r.nguoiTao.hoTen, items: [] });
     }
     groups.get(key)!.items.push(r);
   }
@@ -54,7 +55,7 @@ export default function ToanBoPhongList({
                 <div className="min-w-0">
                   <p className="break-words text-sm text-gray-800 dark:text-white/90">
                     {row.noiDung}
-                    {row.daChuyenPhong && (
+                    {row.laCuaPhong && (
                       <span className="ml-2 inline-block rounded-full bg-purple-100 px-2.5 py-0.5 align-middle text-xs font-medium text-purple-700 dark:bg-purple-500/15 dark:text-purple-400">
                         Đã chuyển Phòng
                       </span>
@@ -78,12 +79,12 @@ export default function ToanBoPhongList({
                     </p>
                   )}
                 </div>
-                {onConvert && !row.daChuyenPhong && (
+                {onConvert && !row.laCuaPhong && (
                   <button
                     onClick={() => onConvert(row.id)}
                     className="shrink-0 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-purple-50 hover:text-purple-600 dark:bg-white/5 dark:text-gray-300"
                   >
-                    → Chuyển {loai === "KEHOACH" ? "KH" : "BC"} Phòng
+                    → Đánh dấu {loai === "KEHOACH" ? "KH" : "BC"} Phòng
                   </button>
                 )}
               </div>
