@@ -1,9 +1,10 @@
 "use client";
 
 import { Modal } from "@/components/ui/modal";
-import { formatDateTimeVN } from "@/lib/week";
+import { formatDateTimeVN, formatDateVN } from "@/lib/week";
 import type { KeHoachRow } from "@/lib/actions/ke-hoach";
 import { LoaiGhiNhan } from "@prisma/client";
+import ProgressBar from "./ProgressBar";
 
 export default function ChiTietModal({
   isOpen,
@@ -74,8 +75,30 @@ export default function ChiTietModal({
               <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Trạng thái</p>
               <p className={row.daHoanThanh ? "text-success-600" : "text-error-600"}>
                 {row.daHoanThanh ? "Đã hoàn thành" : "Chưa hoàn thành"}
-                {row.daChuyenPhong && " · Đã chuyển Kế hoạch Phòng"}
+                {row.laCuaPhong && " · Đã chuyển Kế hoạch Phòng"}
               </p>
+            </div>
+          )}
+
+          {!isBaoCao && row.hanXuLy && (
+            <div>
+              <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Hạn xử lý</p>
+              <p
+                className={
+                  !row.daHoanThanh && new Date(row.hanXuLy) < new Date()
+                    ? "font-medium text-error-600"
+                    : "text-gray-800 dark:text-white/90"
+                }
+              >
+                {formatDateVN(new Date(row.hanXuLy))}
+              </p>
+            </div>
+          )}
+
+          {!isBaoCao && row.tienDo != null && (
+            <div>
+              <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Tiến độ</p>
+              <ProgressBar percent={row.tienDo} />
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CapDoKeHoach, LoaiGhiNhan } from "@prisma/client";
+import { LoaiGhiNhan } from "@prisma/client";
 import { traCuuKeHoachBaoCao } from "@/lib/actions/tra-cuu";
 import { buildKeHoachBaoCaoPhongDocx } from "@/lib/word/ke-hoach-phong-docx";
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       nam,
       tuan,
       loai,
-      capDo: CapDoKeHoach.PHONG,
+      phamVi: "phong",
       maPhong,
     });
     const buffer = await buildKeHoachBaoCaoPhongDocx({ loai, nam, tuan, rows });

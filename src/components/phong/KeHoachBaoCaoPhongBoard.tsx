@@ -2,23 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoaiGhiNhan } from "@prisma/client";
-import { getCurrentWeekInfo, getWeekDateRangeLabel } from "@/lib/week";
+import { getCurrentWeekInfo, getWeekDateRangeLabel, isoWeeksInYear } from "@/lib/week";
 import {
   getKeHoachPhong,
   markHoanThanh,
-  type KeHoachPhongRow,
+  type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
 import { useModal } from "@/hooks/useModal";
+import { useAuth } from "@/context/AuthContext";
 import WeekSelect from "@/components/ca-nhan/WeekSelect";
 import KeHoachBaoCaoItemCard from "@/components/ca-nhan/KehoachBaoCaoItemCard";
 import UpdateResultModal from "@/components/ca-nhan/UpdateResultModal";
 import ConfirmDialog from "@/components/ca-nhan/ConfirmDialog";
 import ToastProvider, { useToast } from "@/components/ca-nhan/ToastProvider";
-import AddKeHoachBaoCaoPhongModal from "./AddKeHoachBaoCaoPhongModal";
+import AddKeHoachBaoCaoPhongModal from "@/components/phong/AddKeHoachBaoCaoPhongModal";
 
 // Bảng Kế hoạch/Báo cáo CẤP PHÒNG — logic/giao diện gần như y hệt bảng cá nhân
 // (KeHoachBaoCaoBoard.tsx), khác 3 điểm chính:
-// 1. Dữ liệu là capDo=PHONG của CẢ PHÒNG (không riêng người đang đăng nhập) — ai trong phòng cũng
+// 1. Dữ liệu là laCuaPhong=true của CẢ PHÒNG (không riêng người đang đăng nhập) — ai trong phòng cũng
 //    xem và thao tác được (đánh dấu hoàn thành/cập nhật), vết cập nhật vẫn ghi rõ người thao tác.
 // 2. Card hiển thị thêm "Người tạo" — vì nhiều người khác nhau trong phòng có thể tạo ra dòng này.
 // 3. KHÔNG có "Chuyển thành ... Phòng" (đã là cấp Phòng) và không có "Đã/Chưa chuyển phòng" trong
@@ -40,20 +41,31 @@ export default function KeHoachBaoCaoPhongBoard({ loai }: { loai: LoaiGhiNhan })
 }
 
 function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
-  // Khác board cá nhân: mặc định XEM luôn là TUẦN HIỆN TẠI cho cả 2 loại (không phải "tuần sau"
-  // cho Kế hoạch) — việc mặc định "tuần sau" chỉ áp dụng cho modal THÊM MỚI (xem
-  // AddKeHoachBaoCaoPhongModal), độc lập với tuần đang xem ở đây.
+  // SỬA LẠI theo phản hồi: Kế hoạch mặc định XEM tuần SAU (giống board cá nhân), không phải tuần
+  // hiện tại — chỉ Báo cáo mới mặc định tuần hiện tại (đúng bản chất báo cáo việc đã làm).
   const { nam: namHienTai, tuan: tuanHienTai } = getCurrentWeekInfo();
+  let tuanSauMacDinh = tuanHienTai + 1;
+  let namSauMacDinh = namHienTai;
+  if (tuanSauMacDinh > isoWeeksInYear(namHienTai)) {
+    tuanSauMacDinh = 1;
+    namSauMacDinh = namHienTai + 1;
+  }
+
   const { show } = useToast();
+  const user = useAuth();
+  // Server action loaiKhoiPhong() vẫn tự kiểm tra lại quyền + đúng phòng — cờ này ở FE chỉ để
+  // quyết định có HIỆN nút hay không, không phải nguồn kiểm soát quyền duy nhất.
+  const isLanhDao = user?.quyen === "LANHDAOPHONG" || user?.quyen === "LANHDAODONVI";
 
   const isBaoCao = loai === "BAOCAO";
   const tenLoai = isBaoCao ? "Báo cáo" : "Kế hoạch";
 
-  const [nam, setNam] = useState(namHienTai);
-  const [tuan, setTuan] = useState(tuanHienTai);
-  const [statusTab, setStatusTab] = useState<StatusTab>("chuaThucHien");
+  const [nam, setNam] = useState(isBaoCao ? namHienTai : namSauMacDinh);
+  const [tuan, setTuan] = useState(isBaoCao ? tuanHienTai : tuanSauMacDinh);
+  // Mặc định "Tất cả trạng thái" theo phản hồi (trước đây mặc định "Chưa thực hiện").
+  const [statusTab, setStatusTab] = useState<StatusTab>("tatCa");
 
-  const [rows, setRows] = useState<KeHoachPhongRow[]>([]);
+  const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { isOpen, openModal, closeModal } = useModal();
 
@@ -91,6 +103,13 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
         return rows.filter((r) => !r.daHoanThanh);
     }
   }, [rows, statusTab, isBaoCao]);
+
+  // Dọn selectedIds mỗi khi danh sách hiển thị đổi (VD: 1 dòng vừa được "Loại khỏi phòng" từ menu
+  // 3 chấm của chính nó, khiến nó biến mất khỏi filteredRows) — nếu không, checkbox của dòng đã mất
+  // vẫn còn nằm trong selectedIds, làm sai lệch "Đã chọn N mục" và các thao tác hàng loạt sau đó.
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => filteredRows.some((r) => r.id === id)));
+  }, [filteredRows]);
 
   function toggleSelect(id: number) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
@@ -157,12 +176,14 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
             >
               ✓ Đánh dấu hoàn thành
             </button>
-            <button
+            {/* TẠM THỜI ẨN nút Cập nhật hàng loạt theo yêu cầu (chưa xoá state/modal bên dưới để
+                dễ bật lại sau này — chỉ cần bỏ comment đoạn <button> này). */}
+            {/* <button
               onClick={() => setIsBulkUpdateOpen(true)}
               className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white shadow-theme-xs hover:bg-orange-600"
             >
               📝 Cập nhật kết quả/ghi chú
-            </button>
+            </button> */}
             <button
               onClick={() => setSelectedIds([])}
               className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -193,6 +214,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
                 onChanged={reload}
                 nguoiTao={row.nguoiTao}
                 allowConvertToPhong={false}
+                allowRemoveFromPhong={isLanhDao}
               />
             ))}
           </div>
@@ -208,13 +230,14 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
 
       <UpdateResultModal
         isOpen={isBulkUpdateOpen}
-        showChuyenPhongNote={false}
         onClose={() => setIsBulkUpdateOpen(false)}
         ids={selectedIds}
         onUpdated={() => {
           setSelectedIds([]);
           reload();
         }}
+        showChuyenPhongNote={false}
+        showTienDo={!isBaoCao}
       />
 
       <ConfirmDialog

@@ -15,7 +15,8 @@ export async function buildKeHoachBaoCaoPhongDocx(params: {
   loai: LoaiGhiNhan;
   nam: number;
   tuan: number;
-  // Đã lọc capDo=PHONG từ trước (xem traCuuKeHoachBaoCao) — có thể là 1 phòng hoặc nhiều phòng,
+  // Đã lọc laCuaPhong=true từ trước (xem traCuuKeHoachBaoCao với phamVi: "phong") — có thể là 1
+  // phòng hoặc nhiều phòng,
   // GIỮ NGUYÊN thứ tự đã sort theo thuTu của phòng, không sort lại ở đây.
   rows: TraCuuRow[];
 }): Promise<Buffer> {

@@ -27,6 +27,10 @@ export default function UpdateResultModal({
   // Phòng rồi — không có khái niệm "chuyển phòng tương ứng" nữa, nên mặc định ẩn câu này khi dùng
   // ở đó. Mặc định true để không phá vỡ chỗ gọi cũ (modal dùng ở bảng cá nhân).
   showChuyenPhongNote = true,
+  // Chỉ Kế hoạch mới có Tiến độ % (Báo cáo không có khái niệm này) — truyền true để hiện thêm ô
+  // Tiến độ trong modal. Mặc định false để không phá vỡ chỗ gọi cũ.
+  showTienDo = false,
+  currentTienDo,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -36,12 +40,20 @@ export default function UpdateResultModal({
   currentGhiChu?: string | null;
   onUpdated: () => void;
   showChuyenPhongNote?: boolean;
+  showTienDo?: boolean;
+  currentTienDo?: number | null;
 }) {
   const isBulk = ids.length > 1;
   const { show } = useToast();
 
   const [ketQua, setKetQua] = useState(currentKetQua ?? "");
   const [ghiChu, setGhiChu] = useState(currentGhiChu ?? "");
+  // Hàng loạt: mặc định để trống nghĩa là "giữ nguyên tiến độ từng dòng, không đổi" (khác Kết
+  // quả/Ghi chú vì tiến độ là số, không có khái niệm "chuỗi rỗng" hợp lệ) — dùng "" làm giá trị
+  // rỗng cho input, chỉ gửi lên server khi người dùng thực sự nhập số.
+  const [tienDo, setTienDo] = useState(
+    !isBulk && currentTienDo != null ? String(currentTienDo) : ""
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset lại giá trị hiển thị mỗi lần mở modal (vì modal này được tái sử dụng, không unmount)
@@ -49,8 +61,10 @@ export default function UpdateResultModal({
     if (isOpen) {
       setKetQua(currentKetQua ?? "");
       setGhiChu(currentGhiChu ?? "");
+      setTienDo(!isBulk && currentTienDo != null ? String(currentTienDo) : "");
     }
-  }, [isOpen, currentKetQua, currentGhiChu]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentKetQua, currentGhiChu, currentTienDo]);
 
   async function handleSave() {
     setIsSubmitting(true);
@@ -62,6 +76,7 @@ export default function UpdateResultModal({
         // loạt); sửa 1 dòng: để trống nghĩa là chủ động xoá trắng.
         ketQua: isBulk && !ketQua.trim() ? null : ketQua,
         ghiChu: isBulk && !ghiChu.trim() ? null : ghiChu,
+        tienDo: tienDo.trim() === "" ? undefined : Number(tienDo),
       });
       show("success", "Đã cập nhật", `Đã cập nhật ${ids.length} mục thành công`);
       onUpdated();
@@ -113,6 +128,21 @@ export default function UpdateResultModal({
           <Label>Ghi chú</Label>
           <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
         </div>
+
+        {showTienDo && (
+          <div>
+            <Label>Tiến độ (%){isBulk && " — để trống nếu không đổi"}</Label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={tienDo}
+              onChange={(e) => setTienDo(e.target.value)}
+              placeholder="0 - 100"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-end w-full gap-3 mt-6">

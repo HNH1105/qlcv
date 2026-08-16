@@ -5,7 +5,7 @@ import { LoaiGhiNhan } from "@prisma/client";
 import { getCurrentWeekInfo, isoWeeksInYear, getWeekDateRangeLabel } from "@/lib/week";
 import {
   getKeHoachCaNhan,
-  convertCaNhanToPhongBulk,
+  danhDauLaCuaPhongBulk,
   markHoanThanh,
   type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
@@ -62,7 +62,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
   // Tab trạng thái — chỉ áp dụng cho Kế hoạch (Báo cáo không có khái niệm hoàn thành/chuyển
   // phòng). Hiển thị dưới dạng 1 dropdown gọn thay vì dãy nút, có thêm lựa chọn "Tất cả trạng
   // thái".
-  const [statusTab, setStatusTab] = useState<StatusTab>("chuaThucHien");
+  const [statusTab, setStatusTab] = useState<StatusTab>("tatCa");
 
   const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,9 +95,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
   // "Chưa chuyển phòng" sau khi chuyển 1 dòng, đó không phải do đổi tab: đó là vì dòng vừa chuyển
   // xong rời khỏi bộ lọc đang xem (VD: đang xem "Chưa chuyển phòng" mà chuyển xong dòng đó sẽ biến
   // mất khỏi danh sách vì nó không còn khớp điều kiện lọc nữa) — hành vi lọc đúng, không phải lỗi
-  // chuyển tab. Nếu vẫn thấy tab hiển thị bị đổi (không chỉ là danh sách thay đổi), khả năng cao
-  // do code điều hướng nằm ngoài các file được cung cấp (VD: router ở page.tsx) — cần gửi thêm
-  // source đó để dò tiếp.
+  // chuyển tab.
   useEffect(() => {
     setSelectedIds([]);
   }, [nam, tuan, statusTab]);
@@ -108,9 +106,9 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
       case "daThucHien":
         return rows.filter((r) => r.daHoanThanh);
       case "daChuyenPhong":
-        return rows.filter((r) => r.daChuyenPhong);
+        return rows.filter((r) => r.laCuaPhong);
       case "chuaChuyenPhong":
-        return rows.filter((r) => !r.daChuyenPhong);
+        return rows.filter((r) => !r.laCuaPhong);
       case "tatCa":
         return rows;
       case "chuaThucHien":
@@ -119,6 +117,15 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
     }
   }, [rows, statusTab, isBaoCao]);
 
+  // FIX LỖI ĐÃ BÁO: checkbox vẫn còn đánh dấu sau khi 1 dòng biến mất khỏi danh sách do thao tác
+  // đơn lẻ trên chính nó (VD: bấm "Loại khỏi phòng"/"Đánh dấu hoàn thành" từ menu 3 chấm của dòng
+  // đó khiến nó rời khỏi filteredRows) — effect ở trên chỉ dọn khi đổi nam/tuan/statusTab, không bắt
+  // được trường hợp này. Dọn lại selectedIds mỗi khi filteredRows đổi để luôn khớp với danh sách
+  // đang hiển thị thật.
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => filteredRows.some((r) => r.id === id)));
+  }, [filteredRows]);
+
   function toggleSelect(id: number) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   }
@@ -126,13 +133,13 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
   async function handleBulkConvert() {
     setIsBulkConverting(true);
     try {
-      const res = await convertCaNhanToPhongBulk(selectedIds);
+      const res = await danhDauLaCuaPhongBulk(selectedIds);
       show(
         "success",
         "Đã chuyển thành công",
         res.boQua > 0
-          ? `Đã chuyển ${res.converted} mục, bỏ qua ${res.boQua} mục đã chuyển trước đó`
-          : `Đã chuyển ${res.converted} mục thành Kế hoạch Phòng`
+          ? `Đã chuyển ${res.updated} mục, bỏ qua ${res.boQua} mục đã thuộc Phòng từ trước`
+          : `Đã chuyển ${res.updated} mục thành Kế hoạch Phòng`
       );
       setSelectedIds([]);
       reload();
@@ -222,7 +229,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
               onClick={() => setIsBulkConvertConfirmOpen(true)}
               className="rounded-lg bg-purple-500 px-3 py-1.5 text-xs font-medium text-white shadow-theme-xs hover:bg-purple-600"
             >
-              → Chuyển KH cho phòng
+              → Đánh dấu là KH Phòng
             </button>
             <button
               onClick={() => setSelectedIds([])}
@@ -275,13 +282,15 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
           setSelectedIds([]);
           reload();
         }}
+        showTienDo={!isBaoCao}
       />
 
       <ConfirmDialog
         isOpen={isBulkConvertConfirmOpen}
-        title="Chuyển KH cho phòng"
-        description={`Bạn muốn chuyển ${selectedIds.length} kế hoạch cá nhân đã chọn thành kế hoạch phòng?`}
-        note="Các mục đã từng chuyển trước đó sẽ được bỏ qua, không tạo trùng."
+        title="Đánh dấu là KH Phòng"
+        description={`Bạn muốn đánh dấu ${selectedIds.length} kế hoạch cá nhân đã chọn là kế hoạch phòng?`}
+        note="Các mục đã đánh dấu từ trước sẽ được bỏ qua, không đánh dấu lại."
+        confirmText="Đánh dấu"
         isLoading={isBulkConverting}
         onConfirm={handleBulkConvert}
         onClose={() => setIsBulkConvertConfirmOpen(false)}

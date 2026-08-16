@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import NguoiPhoiHopSelect from "@/components/ca-nhan/NguoiPhoiHopSelect";
+import DatePicker from "@/components/form/date-picker";
 import { submitKeHoachPhong } from "@/lib/actions/ke-hoach";
 import { getNhanVienList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
@@ -23,7 +24,8 @@ type NhanVien = { maNV: string; hoTen: string; maPhong: string };
 
 // Modal Thêm mới CẤP PHÒNG — cùng bố cục với AddKeHoachBaoCaoModal (cá nhân) nhưng:
 // - KHÔNG có checkbox "chuyển thành phòng" (dòng này đã là cấp Phòng rồi, không cần chuyển tiếp).
-// - Gọi submitKeHoachPhong (tạo capDo=PHONG, người tạo = người đang đăng nhập) thay vì
+// - Gọi submitKeHoachPhong (laCuaPhong=true, laCuaCaNhan=false, người tạo = người đang đăng nhập)
+//   thay vì
 //   submitKeHoachCaNhan.
 // - Tuần mặc định trong modal LÀ HẰNG SỐ độc lập với tuần đang xem trên board: Kế hoạch luôn mặc
 //   định "tuần sau", Báo cáo luôn mặc định "tuần hiện tại" — dù board đang xem tuần nào, bấm Thêm
@@ -62,6 +64,8 @@ export default function AddKeHoachBaoCaoPhongModal({
   const [noiDung, setNoiDung] = useState("");
   const [ketQua, setKetQua] = useState("");
   const [ghiChu, setGhiChu] = useState("");
+  const [hanXuLy, setHanXuLy] = useState("");
+  const [dateKey, setDateKey] = useState(0);
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
   const [selectedPhoiHop, setSelectedPhoiHop] = useState<string[]>([]);
   const [showPhoiHop, setShowPhoiHop] = useState(false);
@@ -74,6 +78,8 @@ export default function AddKeHoachBaoCaoPhongModal({
     setModalNam(defaultNamTuan.nam);
     setModalTuan(defaultNamTuan.tuan);
     setShowPhoiHop(false);
+    setHanXuLy("");
+    setDateKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -92,12 +98,18 @@ export default function AddKeHoachBaoCaoPhongModal({
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
 
+  const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
+    setHanXuLy(dateStr);
+  }, []);
+
   function resetAndClose() {
     setNoiDung("");
     setKetQua("");
     setGhiChu("");
     setSelectedPhoiHop([]);
     setShowPhoiHop(false);
+    setHanXuLy("");
+    setDateKey((k) => k + 1);
     setError(null);
     onClose();
   }
@@ -118,6 +130,7 @@ export default function AddKeHoachBaoCaoPhongModal({
         ketQua,
         ghiChu,
         nguoiPhoiHopIds: selectedPhoiHop,
+        hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
       });
       show(
         "success",
@@ -148,9 +161,9 @@ export default function AddKeHoachBaoCaoPhongModal({
       )}
 
       <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Tuần</label>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-[140px] shrink-0">
+            <Label>Tuần</Label>
             <select
               value={`${modalNam}-${modalTuan}`}
               onChange={(e) => {
@@ -158,7 +171,7 @@ export default function AddKeHoachBaoCaoPhongModal({
                 setModalNam(n);
                 setModalTuan(t);
               }}
-              className="h-10 min-w-[160px] rounded-lg border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
               {tuanOptions.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -166,21 +179,33 @@ export default function AddKeHoachBaoCaoPhongModal({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
-              Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
-            </p>
           </div>
+
+          {!isBaoCao && (
+            <div key={dateKey} className="w-[150px] shrink-0">
+              <DatePicker
+                id="han-xu-ly-phong"
+                label="Hạn xử lý (không bắt buộc)"
+                placeholder="Chọn ngày..."
+                defaultDate={hanXuLy || undefined}
+                onChange={handleHanXuLyChange}
+              />
+            </div>
+          )}
 
           {!showPhoiHop && (
             <button
               type="button"
               onClick={() => setShowPhoiHop(true)}
-              className="flex h-10 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
             >
               <span className="text-base leading-none">+</span> Thêm người phối hợp
             </button>
           )}
         </div>
+        <p className="-mt-3 text-xs text-gray-400">
+          Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
+        </p>
 
         {showPhoiHop && (
           <NguoiPhoiHopSelect

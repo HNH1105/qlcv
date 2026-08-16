@@ -6,17 +6,19 @@ import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import Checkbox from "@/components/form/input/Checkbox";
 import {
   markHoanThanh,
-  convertCaNhanToPhong,
+  danhDauLaCuaPhong,
+  loaiKhoiPhong,
   type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
 import UpdateResultModal from "./UpdateResultModal";
 import ChiTietModal from "./ChiTietModal";
 import ConfirmDialog from "./ConfirmDialog";
+import { ProgressStrip } from "./ProgressBar";
 import { useToast } from "./ToastProvider";
-import { formatDateTimeVN } from "@/lib/week";
+import { formatDateTimeVN, formatDateVN } from "@/lib/week";
 import { LoaiGhiNhan } from "@prisma/client";
 
-type ConfirmAction = "hoanThanh" | "boHoanThanh" | "chuyenPhong" | null;
+type ConfirmAction = "hoanThanh" | "boHoanThanh" | "chuyenPhong" | "loaiPhong" | null;
 
 export default function KeHoachBaoCaoItemCard({
   row,
@@ -26,6 +28,7 @@ export default function KeHoachBaoCaoItemCard({
   onChanged,
   nguoiTao,
   allowConvertToPhong = true,
+  allowRemoveFromPhong = false,
 }: {
   row: KeHoachRow;
   loai: LoaiGhiNhan;
@@ -41,6 +44,10 @@ export default function KeHoachBaoCaoItemCard({
   // Phòng rồi) — truyền false để ẩn mục này trong menu 3 chấm. Mặc định true để không phá vỡ chỗ
   // gọi cũ (bảng cá nhân).
   allowConvertToPhong?: boolean;
+  // "Loại khỏi phòng" — CHỈ hiện ở bảng cấp Phòng, và chỉ khi người xem là lãnh đạo của đúng phòng
+  // đó (board Phòng tự kiểm tra quyen rồi mới truyền true xuống; server action loaiKhoiPhong vẫn
+  // kiểm tra lại quyền 1 lần nữa cho chắc). Mặc định false để không hiện ở bảng cá nhân.
+  allowRemoveFromPhong?: boolean;
 }) {
   const isKeHoach = loai === "KEHOACH";
   const { show } = useToast();
@@ -73,16 +80,30 @@ export default function KeHoachBaoCaoItemCard({
   async function handleConfirmConvert() {
     setIsPending(true);
     try {
-      const res = await convertCaNhanToPhong(row.id);
-      const tenPhong = isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng";
+      const res = await danhDauLaCuaPhong(row.id);
+      const tenPhong = isKeHoach ? "KH Phòng" : "BC Phòng";
       show(
         "success",
-        "Đã chuyển thành công",
-        res.alreadyConverted ? `Mục này đã được chuyển thành ${tenPhong} trước đó` : `Đã chuyển thành ${tenPhong}`
+        "Đã đánh dấu thành công",
+        res.alreadyMarked ? `Mục này đã là ${tenPhong} từ trước` : `Đã đánh dấu là ${tenPhong}`
       );
       onChanged();
     } catch (e) {
-      show("error", "Chuyển thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsPending(false);
+      setConfirmAction(null);
+    }
+  }
+
+  async function handleConfirmLoaiPhong() {
+    setIsPending(true);
+    try {
+      await loaiKhoiPhong(row.id);
+      show("success", "Đã loại khỏi phòng", "Đã trả mục này về cá nhân người tạo");
+      onChanged();
+    } catch (e) {
+      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
     } finally {
       setIsPending(false);
       setConfirmAction(null);
@@ -90,8 +111,9 @@ export default function KeHoachBaoCaoItemCard({
   }
 
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-white/[0.05] dark:bg-white/[0.03]">
-      <div className="flex min-w-0 items-start gap-3">
+    <div className="rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-start gap-3">
         {isKeHoach && onToggleSelect && (
           <div className="mt-0.5 shrink-0">
             <Checkbox checked={!!isSelected} onChange={() => onToggleSelect(row.id)} />
@@ -115,7 +137,7 @@ export default function KeHoachBaoCaoItemCard({
         <div className="min-w-0">
           <p className="line-clamp-3 break-words text-sm text-gray-800 dark:text-white/90">
             {row.noiDung}
-            {row.daChuyenPhong && (
+            {row.laCuaPhong && (
               <span className="ml-2 inline-block rounded-full bg-purple-100 px-2.5 py-0.5 align-middle text-xs font-medium text-purple-700 dark:bg-purple-500/15 dark:text-purple-400">
                 Đã chuyển Phòng
               </span>
@@ -146,6 +168,25 @@ export default function KeHoachBaoCaoItemCard({
             <p className="mt-1 text-[11px] italic text-gray-400">
               Cập nhật lúc {formatDateTimeVN(row.ngayCapNhat)}
               {row.nguoiCapNhat && ` bởi ${row.nguoiCapNhat.hoTen}`}
+            </p>
+          )}
+
+          {/* Hạn xử lý + thanh tiến độ — CHỈ Kế hoạch, chỉ hiện khi có giá trị. Hạn quá ngày mà
+              chưa hoàn thành thì tô đỏ để dễ nhận ra cần xử lý gấp. */}
+          {isKeHoach && row.hanXuLy && (
+            <p
+              className={`mt-1 text-xs font-medium ${
+                !row.daHoanThanh && new Date(row.hanXuLy) < new Date()
+                  ? "text-error-600"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              Hạn xử lý: {formatDateVN(new Date(row.hanXuLy))}
+            </p>
+          )}
+          {isKeHoach && row.tienDo != null && (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Tiến độ: <span className="font-medium">{row.tienDo}%</span>
             </p>
           )}
         </div>
@@ -181,7 +222,7 @@ export default function KeHoachBaoCaoItemCard({
           {/* Trước đây CHỈ Kế hoạch mới có hành động này — nay mở rộng cho cả Báo cáo (chuyển
               thành Báo cáo Phòng). Ẩn hẳn khi allowConvertToPhong=false (bảng cấp Phòng — dòng đó
               đã là cấp Phòng rồi, không "chuyển" lên đâu nữa). */}
-          {allowConvertToPhong && !row.daChuyenPhong && (
+          {allowConvertToPhong && !row.laCuaPhong && (
             <DropdownItem
               onItemClick={() => {
                 setIsMenuOpen(false);
@@ -189,7 +230,7 @@ export default function KeHoachBaoCaoItemCard({
               }}
               className="rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
             >
-              → Chuyển thành {isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng"}
+              → Đánh dấu là {isKeHoach ? "KH Phòng" : "BC Phòng"}
             </DropdownItem>
           )}
 
@@ -214,8 +255,23 @@ export default function KeHoachBaoCaoItemCard({
               {row.daHoanThanh ? "✕ Bỏ đánh dấu hoàn thành" : "✓ Đánh dấu hoàn thành"}
             </DropdownItem>
           )}
+
+          {allowRemoveFromPhong && (
+            <DropdownItem
+              onItemClick={() => {
+                setIsMenuOpen(false);
+                setConfirmAction("loaiPhong");
+              }}
+              className="rounded-lg px-3 py-2 text-left text-sm text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+            >
+              🚫 Loại khỏi phòng
+            </DropdownItem>
+          )}
         </Dropdown>
       </div>
+      </div>
+
+      {isKeHoach && row.tienDo != null && row.tienDo > 0 && <ProgressStrip percent={row.tienDo} />}
 
       <UpdateResultModal
         isOpen={isUpdateOpen}
@@ -226,6 +282,8 @@ export default function KeHoachBaoCaoItemCard({
         currentGhiChu={row.ghiChu}
         onUpdated={onChanged}
         showChuyenPhongNote={allowConvertToPhong}
+        showTienDo={isKeHoach}
+        currentTienDo={row.tienDo}
       />
 
       <ChiTietModal
@@ -238,8 +296,9 @@ export default function KeHoachBaoCaoItemCard({
 
       <ConfirmDialog
         isOpen={confirmAction === "chuyenPhong"}
-        title={`Chuyển thành ${isKeHoach ? "Kế hoạch Phòng" : "Báo cáo Phòng"}`}
-        description={`Bạn muốn đồng thời chuyển 1 ${isKeHoach ? "kế hoạch" : "báo cáo"} cá nhân này thành ${isKeHoach ? "kế hoạch" : "báo cáo"} phòng?`}
+        title={`Đánh dấu là ${isKeHoach ? "KH Phòng" : "BC Phòng"}`}
+        description={`Bạn muốn đánh dấu 1 ${isKeHoach ? "kế hoạch" : "báo cáo"} cá nhân này là ${isKeHoach ? "kế hoạch" : "báo cáo"} phòng?`}
+        confirmText="Đánh dấu"
         isLoading={isPending}
         onConfirm={handleConfirmConvert}
         onClose={() => setConfirmAction(null)}
@@ -249,7 +308,6 @@ export default function KeHoachBaoCaoItemCard({
         isOpen={confirmAction === "hoanThanh"}
         title="Đánh dấu hoàn thành"
         description="Bạn chắc chắn 1 kế hoạch này đã hoàn thành?"
-        note='Đồng thời đánh dấu hoàn thành Kế hoạch Phòng tương ứng (áp dụng cho các mục đã "Đã chuyển Phòng").'
         isLoading={isPending}
         onConfirm={() => handleConfirmHoanThanh(true)}
         onClose={() => setConfirmAction(null)}
@@ -259,9 +317,18 @@ export default function KeHoachBaoCaoItemCard({
         isOpen={confirmAction === "boHoanThanh"}
         title="Bỏ đánh dấu hoàn thành"
         description="Bạn chắc chắn muốn bỏ đánh dấu hoàn thành cho kế hoạch này?"
-        note='Đồng thời bỏ đánh dấu hoàn thành Kế hoạch Phòng tương ứng (áp dụng cho các mục đã "Đã chuyển Phòng").'
         isLoading={isPending}
         onConfirm={() => handleConfirmHoanThanh(false)}
+        onClose={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === "loaiPhong"}
+        title={`Loại khỏi ${isKeHoach ? "Kế hoạch" : "Báo cáo"} Phòng`}
+        description={`Bạn chắc chắn muốn loại mục này khỏi ${isKeHoach ? "Kế hoạch" : "Báo cáo"} Phòng? Mục sẽ được trả về lại thành ${isKeHoach ? "kế hoạch" : "báo cáo"} cá nhân của người tạo.`}
+        confirmText="Loại khỏi phòng"
+        isLoading={isPending}
+        onConfirm={handleConfirmLoaiPhong}
         onClose={() => setConfirmAction(null)}
       />
     </div>

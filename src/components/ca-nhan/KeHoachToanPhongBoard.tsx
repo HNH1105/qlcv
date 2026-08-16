@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWeekInfo, isoWeeksInYear, getWeekDateRangeLabel } from "@/lib/week";
 import {
   getKeHoachToanPhong,
-  convertCaNhanToPhong,
-  type KeHoachToanPhongRow,
+  danhDauLaCuaPhong,
+  type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
 import WeekSelect from "./WeekSelect";
 import ToanBoPhongList from "./ToanBoPhongList";
@@ -30,8 +30,18 @@ type StatusFilter = "tatCa" | "daChuyenPhong" | "chuaChuyenPhong";
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "tatCa", label: "Tất cả trạng thái" },
-  { key: "daChuyenPhong", label: "Đã chuyển phòng" },
-  { key: "chuaChuyenPhong", label: "Chưa chuyển phòng" },
+  { key: "daChuyenPhong", label: "Đã đánh dấu Phòng" },
+  { key: "chuaChuyenPhong", label: "Chưa đánh dấu Phòng" },
+];
+
+// Bộ lọc THỨ 2 — theo yêu cầu, thêm để lãnh đạo dễ xem việc ai đã xử lý/chưa xử lý, độc lập với
+// bộ lọc "đã đánh dấu Phòng" ở trên (2 chiều lọc khác nhau, có thể kết hợp cùng lúc).
+type XuLyFilter = "tatCa" | "daXuLy" | "chuaXuLy";
+
+const XU_LY_FILTERS: { key: XuLyFilter; label: string }[] = [
+  { key: "tatCa", label: "Tất cả (đã/chưa xử lý)" },
+  { key: "daXuLy", label: "Đã xử lý" },
+  { key: "chuaXuLy", label: "Chưa xử lý" },
 ];
 
 function Content() {
@@ -47,7 +57,8 @@ function Content() {
   const [nam, setNam] = useState(namSauMacDinh);
   const [tuan, setTuan] = useState(tuanSauMacDinh);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("tatCa");
-  const [rows, setRows] = useState<KeHoachToanPhongRow[]>([]);
+  const [xuLyFilter, setXuLyFilter] = useState<XuLyFilter>("tatCa");
+  const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const reload = useCallback(() => {
@@ -64,24 +75,33 @@ function Content() {
   }, [reload]);
 
   const filteredRows = useMemo(() => {
+    let result = rows;
     switch (statusFilter) {
       case "daChuyenPhong":
-        return rows.filter((r) => r.daChuyenPhong);
+        result = result.filter((r) => r.laCuaPhong);
+        break;
       case "chuaChuyenPhong":
-        return rows.filter((r) => !r.daChuyenPhong);
-      case "tatCa":
-      default:
-        return rows;
+        result = result.filter((r) => !r.laCuaPhong);
+        break;
     }
-  }, [rows, statusFilter]);
+    switch (xuLyFilter) {
+      case "daXuLy":
+        result = result.filter((r) => r.daHoanThanh);
+        break;
+      case "chuaXuLy":
+        result = result.filter((r) => !r.daHoanThanh);
+        break;
+    }
+    return result;
+  }, [rows, statusFilter, xuLyFilter]);
 
   async function handleConvert(id: number) {
     try {
-      await convertCaNhanToPhong(id);
-      show("success", "Đã chuyển thành công", "Đã chuyển thành Kế hoạch Phòng");
+      await danhDauLaCuaPhong(id);
+      show("success", "Đã đánh dấu thành công", "Đã đánh dấu là Kế hoạch Phòng");
       reload();
     } catch (e) {
-      show("error", "Chuyển thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
     }
   }
 
@@ -97,6 +117,18 @@ function Content() {
             className="h-[42px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
           >
             {STATUS_FILTERS.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={xuLyFilter}
+            onChange={(e) => setXuLyFilter(e.target.value as XuLyFilter)}
+            className="h-[42px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+          >
+            {XU_LY_FILTERS.map((f) => (
               <option key={f.key} value={f.key}>
                 {f.label}
               </option>
