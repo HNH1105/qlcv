@@ -43,9 +43,22 @@ export default function HanXuLyInput({
 
   // Đồng bộ lại khi value bị đổi từ BÊN NGOÀI (VD: modal reset về rỗng lúc mở lại) — flatpickr
   // không tự biết prop value đổi vì nó quản lý DOM input trực tiếp, không qua React re-render.
+  //
+  // LƯU Ý (sửa lỗi build TS2345): flatpickr.Instance.setDate() có kiểu tham số là
+  // `DateOption | DateOption[]`, KHÔNG chấp nhận `null` — bản cũ gọi `setDate(value || null, false)`
+  // nên TypeScript báo lỗi ở bước build. Phải tách rõ 2 nhánh: có giá trị thì setDate(value),
+  // rỗng thì gọi clear() (API riêng của flatpickr để xoá ngày đang chọn) thay vì cố nhét null vào
+  // setDate.
   useEffect(() => {
-    if (fpRef.current && fpRef.current.input.value !== value) {
-      fpRef.current.setDate(value || null, false);
+    if (!fpRef.current) return;
+    if (fpRef.current.input.value === value) return;
+    if (value) {
+      fpRef.current.setDate(value, false);
+    } else {
+      // clear(triggerChange = false) — xoá ngày đang chọn mà KHÔNG tự bắn lại onChange, vì effect
+      // này chạy để PHẢN ỨNG với việc value đã đổi từ bên ngoài rồi, không cần báo ngược lại lần
+      // nữa (tránh gọi thừa onChangeRef.current("")).
+      fpRef.current.clear(false);
     }
   }, [value]);
 
