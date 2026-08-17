@@ -25,6 +25,7 @@ export type KeHoachRow = {
   ketQua: string | null;
   ghiChu: string | null;
   daHoanThanh: boolean;
+  thoiGianHoanThanh: Date | null; // thời điểm đánh dấu hoàn thành gần nhất — khác ngayCapNhat
   laCuaCaNhan: boolean;
   laCuaPhong: boolean;
   hanXuLy: Date | null; // chỉ có ý nghĩa với Kế hoạch
@@ -66,6 +67,7 @@ function mapRow(r: RowWithIncludes): KeHoachRow {
     ketQua: r.ketQua,
     ghiChu: r.ghiChu,
     daHoanThanh: r.daHoanThanh,
+    thoiGianHoanThanh: r.thoiGianHoanThanh,
     laCuaCaNhan: r.laCuaCaNhan,
     laCuaPhong: r.laCuaPhong,
     hanXuLy: r.hanXuLy,
@@ -253,12 +255,14 @@ export async function markHoanThanh(ids: number[], value: boolean) {
 
   const result = await prisma.keHoachTuan.updateMany({
     where: { id: { in: ids }, isDeleted: false },
-    // Đánh dấu HOÀN THÀNH -> tự set luôn tienDo=100 (đúng logic: đã xong thì tiến độ phải đầy).
-    // Bỏ đánh dấu (value=false) thì KHÔNG tự giảm tienDo lại — không có cách nào biết chắc tiến độ
-    // "thật" trước đó là bao nhiêu, để nguyên tránh mất dữ liệu người dùng đã nhập tay.
+    // Đánh dấu HOÀN THÀNH -> tự set luôn tienDo=100 + thoiGianHoanThanh=lúc này.
+    // Bỏ đánh dấu (value=false) -> KHÔNG tự giảm tienDo (giữ nguyên, tránh mất dữ liệu người dùng
+    // đã nhập tay), nhưng xoá thoiGianHoanThanh về null (đúng nghĩa: không còn hoàn thành thì
+    // không còn "thời điểm hoàn thành" nào cả).
     data: {
       daHoanThanh: value,
       nguoiCapNhatId: user.maNV,
+      thoiGianHoanThanh: value ? new Date() : null,
       ...(value ? { tienDo: 100 } : {}),
     },
   });
