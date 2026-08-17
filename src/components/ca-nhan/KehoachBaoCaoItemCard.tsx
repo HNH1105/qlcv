@@ -112,7 +112,11 @@ export default function KeHoachBaoCaoItemCard({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-      <div className="flex items-start justify-between gap-3 p-4">
+      <div
+        className={`flex items-start justify-between gap-3 p-4 sm:relative ${
+          isKeHoach && row.hanXuLy ? "sm:pb-8" : ""
+        }`}
+      >
         <div className="flex min-w-0 items-start gap-3">
         {isKeHoach && onToggleSelect && (
           <div className="mt-0.5 shrink-0">
@@ -134,7 +138,7 @@ export default function KeHoachBaoCaoItemCard({
 
         {/* min-w-0 + break-words: chặn tràn chữ trên mobile khi nội dung/ghi chú dài, không có
             khoảng trắng để wrap tự nhiên (link dài, số liệu dài...) */}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="line-clamp-3 break-words text-sm text-gray-800 dark:text-white/90">
             {row.noiDung}
             {row.laCuaPhong && (
@@ -145,7 +149,7 @@ export default function KeHoachBaoCaoItemCard({
           </p>
 
           {row.ketQua && (
-            <p className="mt-1 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400">
+            <p className="mt-1 line-clamp-2 break-words text-xs text-blue-600 dark:text-blue-400">
               Kết quả: {row.ketQua}
             </p>
           )}
@@ -160,7 +164,7 @@ export default function KeHoachBaoCaoItemCard({
             </p>
           )}
           {row.nguoiPhoiHop.length > 0 && (
-            <p className="mt-1 break-words text-xs text-gray-400">
+            <p className="mt-1 break-words text-xs text-purple-600 dark:text-purple-400">
               Phối hợp: {row.nguoiPhoiHop.map((p) => p.hoTen).join(", ")}
             </p>
           )}
@@ -171,11 +175,12 @@ export default function KeHoachBaoCaoItemCard({
             </p>
           )}
 
-          {/* Hạn xử lý + thanh tiến độ — CHỈ Kế hoạch, chỉ hiện khi có giá trị. Hạn quá ngày mà
-              chưa hoàn thành thì tô đỏ để dễ nhận ra cần xử lý gấp. */}
+          {/* Hạn xử lý — CHỈ Kế hoạch, chỉ hiện khi có giá trị. Trên di động nằm trong luồng nội
+              dung như bình thường; từ tablet/desktop (sm+) trở lên neo xuống góc dưới-phải của
+              card cho gọn (đúng yêu cầu), tách khỏi khối text chính. */}
           {isKeHoach && row.hanXuLy && (
             <p
-              className={`mt-1 text-xs font-medium ${
+              className={`mt-1 text-xs font-medium sm:absolute sm:bottom-2 sm:right-4 sm:mt-0 ${
                 !row.daHoanThanh && new Date(row.hanXuLy) < new Date()
                   ? "text-error-600"
                   : "text-gray-500 dark:text-gray-400"
