@@ -77,6 +77,11 @@ export default function ChiTietModal({
                 {row.daHoanThanh ? "Đã hoàn thành" : "Chưa hoàn thành"}
                 {row.laCuaPhong && " · Đã chuyển Kế hoạch Phòng"}
               </p>
+              {row.daHoanThanh && row.thoiGianHoanThanh && (
+                <p className="mt-0.5 text-xs text-gray-400">
+                  Hoàn thành lúc {formatDateTimeVN(row.thoiGianHoanThanh)}
+                </p>
+              )}
             </div>
           )}
 

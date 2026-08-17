@@ -12,6 +12,7 @@ export type TraCuuRow = {
   ketQua: string | null;
   ghiChu: string | null;
   daHoanThanh: boolean;
+  thoiGianHoanThanh: Date | null;
   nguoiPhoiHop: { maNV: string; hoTen: string }[];
   taoLuc: Date;
   ngayCapNhat: Date;
@@ -70,6 +71,7 @@ export async function traCuuKeHoachBaoCao(params: {
     ketQua: r.ketQua,
     ghiChu: r.ghiChu,
     daHoanThanh: r.daHoanThanh,
+    thoiGianHoanThanh: r.thoiGianHoanThanh,
     nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
     taoLuc: r.taoLuc,
     ngayCapNhat: r.ngayCapNhat,

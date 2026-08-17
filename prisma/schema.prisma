@@ -172,6 +172,10 @@ model KeHoachTuan {
   noiDung     String      @map("noi_dung") @db.Text
   ketQua      String?     @map("ket_qua") @db.Text
   daHoanThanh Boolean     @default(false) @map("da_hoan_thanh")
+  // Thời điểm ĐÁNH DẤU HOÀN THÀNH gần nhất — KHÁC ngayCapNhat (field đó tự cập nhật ở MỌI lần sửa,
+  // không riêng lúc hoàn thành, nên không dùng lại được để trả lời "hoàn thành lúc nào" nếu sau đó
+  // còn bị sửa Kết quả/Ghi chú...). null khi daHoanThanh=false.
+  thoiGianHoanThanh DateTime? @map("thoi_gian_hoan_thanh")
   ghiChu      String?     @map("ghi_chu") @db.Text
 
   ghiChuPhoiHop String? @map("ghi_chu_phoi_hop") // ô text tự do (giữ nguyên công dụng cột PhoiHop cũ)
