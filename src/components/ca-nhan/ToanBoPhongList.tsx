@@ -52,7 +52,7 @@ export default function ToanBoPhongList({
                 key={row.id}
                 className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3.5 dark:border-white/[0.05] dark:bg-white/[0.03]"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="break-words text-sm text-gray-800 dark:text-white/90">
                     {row.noiDung}
                     {row.laCuaPhong && (
@@ -62,7 +62,7 @@ export default function ToanBoPhongList({
                     )}
                   </p>
                   {row.ketQua && (
-                    <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 break-words text-xs text-blue-600 dark:text-blue-400">
                       Kết quả: {row.ketQua}
                     </p>
                   )}
