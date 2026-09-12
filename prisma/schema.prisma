@@ -86,6 +86,39 @@ enum LoaiThongBao {
   // mở rộng sau: ALTER TYPE ... ADD VALUE, không cần đổi cột
 }
 
+// ---- MỚI: Checklist Giao ban ----
+enum TrangThaiCuocHopGiaoBan {
+  DANG_MO
+  DA_CHOT
+}
+
+// Thang riêng cho Giao ban — CAO/TRUNGBINH/THAP theo đúng dữ liệu Excel gốc, KHÔNG dùng chung
+// enum MucDoUuTien (THUONG/KHAN/HOATOC) của Nhiệm vụ vì ngữ nghĩa khác hẳn.
+enum MucDoUuTienGiaoBan {
+  CAO
+  TRUNGBINH
+  THAP
+}
+
+enum HanhDongGiaoBan {
+  TAO_NOI_DUNG
+  CHUYEN_TU_NHIEM_VU
+  CHUYEN_TU_KE_HOACH_PHONG
+  CAP_NHAT_NOI_DUNG
+  SUA_PHONG_XU_LY
+  THEM_NGUOI_XU_LY
+  XOA_NGUOI_XU_LY
+  SUA_HAN_HOAN_THANH
+  SUA_MUC_DO_UU_TIEN
+  CAP_NHAT_GHI_CHU
+  HOAN_THANH
+  BO_HOAN_THANH
+  CHUYEN_TUAN_SAU
+  XAC_NHAN_CHUYEN_TUAN
+  HUY_KHONG_THEO_DOI
+  DONG_BO_HOAN_THANH
+}
+
 // ==========================================================================================
 // ====================                DANH MỤC                           =================
 // ==========================================================================================
@@ -103,6 +136,9 @@ model Phong {
   nhiemVuPhoiHop NhiemVuPhong[]
 
   nhiemVuNguoiPhoiHop NhiemVuNguoiPhoiHop[] // snapshot phòng của người phối hợp tại thời điểm thêm
+
+  // MỚI — Giao ban: phòng chịu trách nhiệm xử lý nội dung
+  noiDungGiaoBanXuLy NoiDungGiaoBan[]
 
   @@map("phong")
 }
@@ -155,6 +191,14 @@ model NhanVien {
   // Thông báo
   thongBaoNhan ThongBao[]
   nhacViecDaNhan NhacViecDaGui[]
+
+  // MỚI — Giao ban
+  cuocHopGiaoBanTao       CuocHopGiaoBan[]          @relation("GiaoBanCuocHopNguoiTao")
+  noiDungGiaoBanTao       NoiDungGiaoBan[]          @relation("GiaoBanNoiDungNguoiTao")
+  noiDungGiaoBanHoanThanh NoiDungGiaoBan[]          @relation("GiaoBanNguoiHoanThanh")
+  noiDungGiaoBanXoa       NoiDungGiaoBan[]          @relation("GiaoBanNoiDungNguoiXoa")
+  noiDungGiaoBanXuLy      NoiDungGiaoBanNguoiXuLy[]
+  noiDungGiaoBanLogs      NoiDungGiaoBanLog[]       @relation("GiaoBanLogNguoiThucHien")
 
   @@index([maPhong, thuTu])
   @@map("nhan_vien")
@@ -230,6 +274,11 @@ model KeHoachTuan {
 
   // Nhiệm vụ được "nâng cấp" từ dòng Kế hoạch này (1-1, optional, phía FK nằm ở NhiemVu.nguonKeHoachTuanId)
   nhiemVuDuocTao NhiemVu?
+
+  // MỚI — Giao ban: nhiều bản ghi NoiDungGiaoBan (qua nhiều tuần carry-over) có thể cùng trỏ về
+  // đúng 1 KeHoachTuan này — KHÔNG @unique ở đây, ràng buộc "chỉ 1 bản ghi đang sống" nằm ở
+  // partial unique index phía NoiDungGiaoBan (xem migration-giao-ban-partial-unique-index.sql).
+  noiDungGiaoBans NoiDungGiaoBan[]
 
   @@index([nam, tuan, loai])
   @@index([maPhong, nam, tuan, laCuaPhong])
@@ -311,6 +360,11 @@ model NhiemVu {
   nguoiPhoiHop NhiemVuNguoiPhoiHop[]
   logs         NhiemVuLog[]
   subTasks     NhiemVuSubTask[]
+
+  // MỚI — Giao ban: KHÔNG @unique — nhiemVuId được giữ trên MỌI bản ghi trong chuỗi carry-over
+  // (nhiều dòng NoiDungGiaoBan có thể cùng trỏ về NhiemVu này, miễn chỉ 1 dòng "đang sống" tại 1
+  // thời điểm — ràng buộc đó nằm ở partial unique index, không phải ở phía NhiemVu).
+  noiDungGiaoBans NoiDungGiaoBan[]
 
   @@index([trangThai])
   @@index([phongChuTriId])
@@ -457,4 +511,130 @@ model NhacViecDaGui {
   @@unique([loaiDoiTuong, doiTuongId, ngayMoc, kenh, nguoiNhanId])
   @@index([loaiDoiTuong, doiTuongId])
   @@map("nhac_viec_da_gui")
+}
+
+// ==========================================================================================
+// ====================        CHECKLIST GIAO BAN (MỚI)                    ================
+// ==========================================================================================
+// Theo đúng "Đặc tả tính năng Checklist giao ban - cái chính bắt buộc theo.md".
+// Quy ước ĐẶC THÙ cho tính năng này (khác quy ước taoLuc/ngayCapNhat/xoaLuc/nguoiXoaId đang dùng
+// ở NhiemVu/KeHoachTuan): đặc tả yêu cầu literal createdAt/updatedAt/createdById/deletedAt/
+// deletedById — giữ đúng tên field, chỉ thêm @map snake_case cho khớp cột DB.
+
+model CuocHopGiaoBan {
+  id        Int                     @id @default(autoincrement())
+  tuan      Int
+  nam       Int
+  ngayHop   DateTime                @db.Date @map("ngay_hop")
+  trangThai TrangThaiCuocHopGiaoBan @default(DANG_MO) @map("trang_thai")
+
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy NhanVien         @relation("GiaoBanCuocHopNguoiTao", fields: [createdById], references: [maNV])
+  noiDungs  NoiDungGiaoBan[]
+
+  @@unique([nam, tuan])
+  @@index([trangThai])
+  @@map("cuoc_hop_giao_ban")
+}
+
+// Mỗi lần xuất hiện tại 1 tuần là 1 dòng riêng — KHÔNG có bảng nối N:N sang CuocHopGiaoBan.
+model NoiDungGiaoBan {
+  id               Int @id @default(autoincrement())
+  cuocHopGiaoBanId Int @map("cuoc_hop_giao_ban_id")
+
+  noiDung String @map("noi_dung") @db.Text
+
+  // Nguồn: đúng 1 trong 2 khác null, hoặc cả 2 null (nhập trực tiếp). Giữ nguyên trên MỌI bản ghi
+  // trong chuỗi carry-over — không chỉ bản ghi gốc.
+  nhiemVuId     Int? @map("nhiem_vu_id")
+  keHoachTuanId Int? @map("ke_hoach_tuan_id")
+
+  // Mã chuỗi độc lập, tự sinh, KHÔNG phải FK trỏ tới bản ghi nào — nối các bản ghi carry-over của
+  // cùng 1 công việc xuyên nhiều tuần.
+  chuoiNoiDungId String @default(cuid()) @map("chuoi_noi_dung_id")
+
+  // Bản ghi tuần NGAY TRƯỚC đã sinh ra bản ghi này — UNIQUE để 1 bản ghi cũ chỉ được làm nguồn cho
+  // đúng 1 bản ghi mới (chống chuyển tuần trùng).
+  nguonNoiDungGiaoBanId Int? @unique @map("nguon_noi_dung_giao_ban_id")
+
+  phongXuLyId  String             @map("phong_xu_ly_id") // bắt buộc
+  hanHoanThanh DateTime           @db.Date @map("han_hoan_thanh")
+  mucDoUuTien  MucDoUuTienGiaoBan @map("muc_do_uu_tien")
+
+  daHoanThanh       Boolean   @default(false) @map("da_hoan_thanh")
+  nguoiHoanThanhId  String?   @map("nguoi_hoan_thanh_id")
+  thoiGianHoanThanh DateTime? @map("thoi_gian_hoan_thanh")
+
+  // daKetThuc: bản ghi đã kết thúc theo dõi (hoàn thành/chuyển tuần/huỷ) — KHÁC daHoanThanh.
+  // deNghiChuyenTuan: đã đề nghị nhưng CHƯA tạo bản ghi tuần mới.
+  daKetThuc        Boolean @default(false) @map("da_ket_thuc")
+  deNghiChuyenTuan Boolean @default(false) @map("de_nghi_chuyen_tuan")
+
+  ghiChu String? @map("ghi_chu") @db.Text // KHÔNG bị ghi đè khi đồng bộ từ nguồn
+
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+
+  cuocHopGiaoBan CuocHopGiaoBan @relation(fields: [cuocHopGiaoBanId], references: [id])
+  nhiemVu        NhiemVu?       @relation(fields: [nhiemVuId], references: [id])
+  keHoachTuan    KeHoachTuan?   @relation(fields: [keHoachTuanId], references: [id])
+  phongXuLy      Phong          @relation(fields: [phongXuLyId], references: [maPhong])
+  nguoiHoanThanh NhanVien?      @relation("GiaoBanNguoiHoanThanh", fields: [nguoiHoanThanhId], references: [maNV])
+  createdBy      NhanVien       @relation("GiaoBanNoiDungNguoiTao", fields: [createdById], references: [maNV])
+  deletedBy      NhanVien?      @relation("GiaoBanNoiDungNguoiXoa", fields: [deletedById], references: [maNV])
+
+  // Tự tham chiếu 1-1: bản ghi cũ (nguon) <-> bản ghi mới được sinh ra từ nó (duocChuyenThanh)
+  nguonNoiDungGiaoBan NoiDungGiaoBan? @relation("GiaoBanChuyenTuan", fields: [nguonNoiDungGiaoBanId], references: [id])
+  duocChuyenThanh     NoiDungGiaoBan? @relation("GiaoBanChuyenTuan")
+
+  nguoiXuLys NoiDungGiaoBanNguoiXuLy[]
+  logs       NoiDungGiaoBanLog[]
+
+  @@unique([nhiemVuId, cuocHopGiaoBanId])
+  @@unique([keHoachTuanId, cuocHopGiaoBanId])
+  @@index([cuocHopGiaoBanId, isDeleted, daKetThuc])
+  @@index([chuoiNoiDungId])
+  @@index([nhiemVuId])
+  @@index([keHoachTuanId])
+  @@index([phongXuLyId])
+  @@map("noi_dung_giao_ban")
+}
+
+model NoiDungGiaoBanNguoiXuLy {
+  id               Int      @id @default(autoincrement())
+  noiDungGiaoBanId Int      @map("noi_dung_giao_ban_id")
+  nhanVienId       String   @map("nhan_vien_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  noiDungGiaoBan NoiDungGiaoBan @relation(fields: [noiDungGiaoBanId], references: [id], onDelete: Cascade)
+  nhanVien       NhanVien       @relation(fields: [nhanVienId], references: [maNV])
+
+  @@unique([noiDungGiaoBanId, nhanVienId])
+  @@map("noi_dung_giao_ban_nguoi_xu_ly")
+}
+
+// Audit log — 1 hành động = 1 log.
+model NoiDungGiaoBanLog {
+  id               Int             @id @default(autoincrement())
+  noiDungGiaoBanId Int             @map("noi_dung_giao_ban_id")
+  nguoiThucHienId  String          @map("nguoi_thuc_hien_id")
+  thoiGian         DateTime        @default(now()) @map("thoi_gian")
+  thaoTac          HanhDongGiaoBan @map("thao_tac")
+  truongDuocSua    String?         @map("truong_duoc_sua")
+  giaTriCu         String?         @map("gia_tri_cu") @db.Text
+  giaTriMoi        String?         @map("gia_tri_moi") @db.Text
+
+  noiDungGiaoBan NoiDungGiaoBan @relation(fields: [noiDungGiaoBanId], references: [id], onDelete: Cascade)
+  nguoiThucHien  NhanVien       @relation("GiaoBanLogNguoiThucHien", fields: [nguoiThucHienId], references: [maNV])
+
+  @@index([noiDungGiaoBanId, thoiGian])
+  @@map("noi_dung_giao_ban_log")
 }

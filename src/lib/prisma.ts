@@ -23,7 +23,7 @@ if (process.env.NODE_ENV !== "production") {
 
 // Danh sách model có cột isDeleted — chỉ các model liệt kê ở đây mới bị extension can thiệp.
 // Tên field đúng theo Prisma Client (camelCase, không phải @@map trong DB).
-const SOFT_DELETE_MODELS = new Set(["NhiemVu", "KeHoachTuan", "NhiemVuSubTask"]);
+const SOFT_DELETE_MODELS = new Set(["NhiemVu", "KeHoachTuan", "NhiemVuSubTask","NoiDungGiaoBan"]);
 
 // Chèn isDeleted: false vào where NẾU caller chưa tự chỉ định — presence-check bằng `in`, không
 // phải giá trị, để phân biệt "không truyền gì" (áp mặc định) với "truyền tường minh isDeleted:
