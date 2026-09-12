@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { AuthProvider } from "@/context/AuthContext";
 import AdminShell from "@/layout/AdminShell";
-
+import { NavProgressProvider } from "@/components/providers/NavProgressProvider";
 export default async function AdminLayout({
   children,
 }: {
@@ -15,8 +15,12 @@ export default async function AdminLayout({
   }
 
   return (
-    <AuthProvider user={session}>
-      <AdminShell>{children}</AdminShell>
-    </AuthProvider>
+
+      <AuthProvider user={session}>
+            <NavProgressProvider>
+        <AdminShell>{children}</AdminShell>
+          </NavProgressProvider>
+      </AuthProvider>
+  
   );
 }

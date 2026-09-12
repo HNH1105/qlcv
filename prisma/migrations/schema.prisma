@@ -346,13 +346,6 @@ model NhiemVuNguoiPhoiHop {
   ngayThem      DateTime @default(now()) @map("ngay_them")
   ghiChu        String?  @map("ghi_chu") // ghi chú đóng góp — CHỈ chính người phối hợp đó được sửa
 
-  // MỚI — cho phép người phối hợp tự đánh dấu ĐÃ HOÀN THÀNH PHẦN VIỆC của họ (khác với trạng thái
-  // TỔNG THỂ của cả NhiemVu, do người xử lý chính/LĐ phòng quản lý). Không ảnh hưởng tienDoPhanTram
-  // chung — chỉ là theo dõi riêng cho từng người phối hợp, để người giao/LĐ biết ai đã xong phần
-  // của mình, ai chưa.
-  daHoanThanhPhanViec      Boolean   @default(false) @map("da_hoan_thanh_phan_viec")
-  thoiGianHoanThanhPhanViec DateTime? @map("thoi_gian_hoan_thanh_phan_viec")
-
   nhiemVu  NhiemVu  @relation(fields: [nhiemVuId], references: [id], onDelete: Cascade)
   nhanVien NhanVien @relation(fields: [maNV], references: [maNV])
   phong    Phong?   @relation(fields: [maPhong], references: [maPhong])
