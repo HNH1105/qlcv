@@ -10,17 +10,12 @@ import {
   MucDoUuTien,
   TanSuatNhac,
   TrangThaiNhiemVu,
+  Quyen, // FIX: thêm import Quyen
 } from "@prisma/client";
 
 // ==========================================================================================
-// PHASE 1 — CORE: tạo mới, đọc danh sách/chi tiết, toàn bộ hành động đổi trạng thái.
-// Phase 3 (đổi phòng chủ trì) gộp luôn vào file này vì dùng chung transaction pattern với các
-// hành động đổi trạng thái — tách file riêng sẽ phải import qua lại không cần thiết.
+// PHASE 1 — CORE
 // ==========================================================================================
-
-// ------------------------------------------------------------------------------------------
-// Kiểu dữ liệu dùng chung
-// ------------------------------------------------------------------------------------------
 
 export type NhiemVuRow = {
   id: number;
@@ -32,15 +27,9 @@ export type NhiemVuRow = {
   phongChuTriId: string;
   tenPhongChuTri: string;
   nguoiXuLyChinh: { maNV: string; hoTen: string } | null;
-  // MỚI — CHỈ có giá trị khi lấy theo vai trò "phoiHop" (getNhiemVuCuaToi). Trạng thái hoàn thành
-  // PHẦN VIỆC RIÊNG của người phối hợp đang xem, KHÁC hẳn trangThai chung của cả nhiệm vụ — dùng
-  // để phân loại "đã xử lý/chưa xử lý" đúng góc nhìn của người phối hợp thay vì mượn trạng thái
-  // tổng thể (vốn do người xử lý chính quyết định).
   daHoanThanhPhanViecCuaToi?: boolean;
 };
 
-// Danh sách CHỈ chọn field tóm tắt — KHÔNG kéo theo noiDung/log/subtask đầy đủ (đúng nguyên tắc đã
-// chốt: "chỉ load danh sách lúc đầu", chi tiết load riêng khi vào /nhiem-vu/[id]).
 const SELECT_TOM_TAT = {
   id: true,
   tieuDe: true,
@@ -77,10 +66,6 @@ function toRow(r: {
   };
 }
 
-// ------------------------------------------------------------------------------------------
-// Helper quyền — tránh lặp lại logic "có phải BGĐ/LĐ phòng chủ trì" ở nhiều action
-// ------------------------------------------------------------------------------------------
-
 async function layNhiemVuHoacLoi(id: number) {
   const nv = await prisma.nhiemVu.findFirst({ where: { id } });
   if (!nv) throw new Error("Không tìm thấy nhiệm vụ hoặc đã bị xoá.");
@@ -94,10 +79,6 @@ function laBGD(quyen: string) {
 function laLanhDaoPhongChuTri(quyen: string, maPhongNguoiDung: string, phongChuTriId: string) {
   return quyen === "LANHDAOPHONG" && maPhongNguoiDung === phongChuTriId;
 }
-
-// (Hàm assertNhanVienDangHoatDong đã bị xoá — validate hoạt động giờ làm bằng 1 câu findMany theo
-// lô, gộp thẳng vào taoNhiemVu/phanCongBoSung ngay trước khi mở transaction, để tránh nhiều lượt
-// gọi DB tuần tự bên trong transaction gây timeout.)
 
 // ------------------------------------------------------------------------------------------
 // TẠO MỚI
@@ -117,7 +98,6 @@ const TaoNhiemVuSchema = z.object({
   nguoiXuLyChinhId: z.string().nullable().optional(),
   phongPhoiHopIds: z.array(z.string()).default([]),
   nguoiPhoiHopIds: z.array(z.string()).default([]),
-  // Nhắc định kỳ — loại trừ với hanXuLy (validate ở dưới)
   tanSuatNhac: z.enum(["HANG_TUAN", "HANG_THANG", "HANG_QUY", "HANG_NAM"]).nullable().optional(),
   ngayBatDauNhac: z.date().nullable().optional(),
   ngayKetThucNhac: z.date().nullable().optional(),
@@ -127,24 +107,20 @@ export async function taoNhiemVu(input: z.infer<typeof TaoNhiemVuSchema>) {
   const session = await requireSession();
   const data = TaoNhiemVuSchema.parse(input);
 
-  // Chỉ BGĐ hoặc LĐ phòng (đúng phòng chủ trì đang chọn) được tạo.
   const duocTao =
     laBGD(session.quyen) || laLanhDaoPhongChuTri(session.quyen, session.maPhong, data.phongChuTriId);
   if (!duocTao) {
     throw new Error("Bạn không có quyền giao nhiệm vụ cho phòng này.");
   }
 
-  // Không cho vừa có hạn cụ thể vừa nhắc định kỳ — loại trừ nhau (thiết kế "giống Google Calendar").
   if (data.hanXuLy && data.tanSuatNhac) {
     throw new Error("Chỉ chọn 1 trong 2: Hạn xử lý cụ thể HOẶC Nhắc lặp lại định kỳ.");
   }
 
-  // Người xử lý chính (nếu có) KHÔNG được trùng danh sách phối hợp — invariant đã chốt.
   if (data.nguoiXuLyChinhId && data.nguoiPhoiHopIds.includes(data.nguoiXuLyChinhId)) {
     throw new Error("Người xử lý chính không được đồng thời là người phối hợp.");
   }
 
-  // Validate nguoiGiaoId server-side — không tin dữ liệu UI đã lọc đúng (đúng góp ý review).
   const nguoiGiao = await prisma.nhanVien.findFirst({
     where: { maNV: data.nguoiGiaoId, hoatDong: true },
   });
@@ -158,12 +134,6 @@ export async function taoNhiemVu(input: z.infer<typeof TaoNhiemVuSchema>) {
 
   const trangThaiKhoiTao: TrangThaiNhiemVu = data.nguoiXuLyChinhId ? "DANGXULY" : "CHO_PHAN_CONG";
 
-  // ===== ĐỌC TRƯỚC, NGOÀI TRANSACTION =====
-  // Lý do sửa: bản cũ đọc từng người (findUnique nhân viên + findUnique phòng) TUẦN TỰ BÊN TRONG
-  // transaction — với vài người phối hợp, số lượt gọi DB cộng dồn dễ vượt quá 5000ms mặc định của
-  // Prisma interactive transaction (lỗi "Transaction already closed"). Gom hết thành 1 câu
-  // findMany duy nhất, đọc XONG rồi mới mở transaction — transaction chỉ còn thao tác ghi, nhanh
-  // và ổn định bất kể số người phối hợp nhiều hay ít.
   const dsMaNVCanKiemTra = [
     ...(data.nguoiXuLyChinhId ? [data.nguoiXuLyChinhId] : []),
     ...data.nguoiPhoiHopIds,
@@ -188,7 +158,6 @@ export async function taoNhiemVu(input: z.infer<typeof TaoNhiemVuSchema>) {
     return { maNV, maPhong: nv.maPhong, tenPhongLucDo: nv.phong.tenPhong };
   });
 
-  // ===== CHỈ GHI — transaction gọn, không còn query đọc bên trong =====
   const nhiemVu = await prisma.$transaction(
     async (tx: PrismaTx) => {
       const created = await tx.nhiemVu.create({
@@ -209,19 +178,16 @@ export async function taoNhiemVu(input: z.infer<typeof TaoNhiemVuSchema>) {
           tanSuatNhac: data.tanSuatNhac ?? null,
           ngayBatDauNhac: data.ngayBatDauNhac ?? null,
           ngayKetThucNhac: data.ngayKetThucNhac ?? null,
-          ngayNhacTiepTheo: data.ngayBatDauNhac ?? null, // lần đầu = chính ngày bắt đầu
+          ngayNhacTiepTheo: data.ngayBatDauNhac ?? null,
           phongPhoiHop: {
             create: data.phongPhoiHopIds
-              .filter((ma) => ma !== data.phongChuTriId) // không cho trùng chủ trì ngay từ lúc tạo
+              .filter((ma) => ma !== data.phongChuTriId)
               .map((maPhong) => ({ maPhong })),
           },
           nguoiPhoiHop: { create: duLieuPhoiHop },
         },
       });
 
-      // Ghi TAO_MOI luôn luôn. Nếu tạo kèm sẵn người xử lý chính, ghi THÊM 1 dòng PHAN_CONG riêng
-      // ngay sau đó (trong CÙNG transaction) — đây là 2 hành động nghiệp vụ khác nhau (tạo nhiệm
-      // vụ / phân công người), audit log nên tách rõ thay vì gộp vào 1 dòng ghiChu.
       await tx.nhiemVuLog.create({
         data: {
           nhiemVuId: created.id,
@@ -251,14 +217,14 @@ export async function taoNhiemVu(input: z.infer<typeof TaoNhiemVuSchema>) {
 
       return created;
     },
-    { timeout: 15000 } // tăng từ mặc định 5000ms — an toàn hơn cho DB có độ trễ mạng (VD: Neon/pooled)
+    { timeout: 15000 }
   );
 
   return { id: nhiemVu.id };
 }
 
 // ------------------------------------------------------------------------------------------
-// ĐỌC — danh sách (tóm tắt) & chi tiết (đầy đủ)
+// ĐỌC
 // ------------------------------------------------------------------------------------------
 
 export async function getNhiemVuCuaToi(vaiTro: "xuLyChinh" | "phoiHop"): Promise<NhiemVuRow[]> {
@@ -273,9 +239,6 @@ export async function getNhiemVuCuaToi(vaiTro: "xuLyChinh" | "phoiHop"): Promise
     return rows.map(toRow);
   }
 
-  // Nhánh "phoiHop": lấy KÈM daHoanThanhPhanViec của ĐÚNG người đang xem (where lồng bên trong
-  // include chỉ trả về 1 dòng phối hợp — của chính session.maNV) để trang "Của tôi" phân loại
-  // đã/chưa xử lý theo góc nhìn cá nhân, không mượn trạng thái chung của nhiệm vụ.
   const rows = await prisma.nhiemVu.findMany({
     where: { nguoiPhoiHop: { some: { maNV: session.maNV } } },
     select: {
@@ -299,8 +262,6 @@ export async function getNhiemVuPhong(): Promise<NhiemVuRow[]> {
   if (session.quyen !== "LANHDAOPHONG" && session.quyen !== "LANHDAODONVI") {
     throw new Error("Chỉ Lãnh đạo phòng hoặc Ban Giám đốc được xem trang này.");
   }
-  // LĐ phòng: chỉ phòng mình. BGĐ dùng trang Tra cứu để xem toàn đơn vị — trang này giữ đúng phạm
-  // vi "quản lý phòng", không mở rộng cho BGĐ xem mọi phòng ở đây.
   if (session.quyen === "LANHDAODONVI") {
     throw new Error("Ban Giám đốc dùng trang Tra cứu để xem toàn đơn vị.");
   }
@@ -315,7 +276,7 @@ export async function getNhiemVuPhong(): Promise<NhiemVuRow[]> {
 }
 
 export async function getNhiemVuChiTiet(id: number) {
-  await requireSession(); // công khai cho ai đăng nhập, chỉ cần chặn truy cập ẩn danh
+  await requireSession();
 
   const nv = await prisma.nhiemVu.findFirst({
     where: { id },
@@ -342,7 +303,7 @@ export async function getNhiemVuChiTiet(id: number) {
 }
 
 // ------------------------------------------------------------------------------------------
-// CÁC HÀNH ĐỘNG ĐỔI TRẠNG THÁI — đều đi qua validateTransition() trước khi update
+// ĐỔI TRẠNG THÁI
 // ------------------------------------------------------------------------------------------
 
 async function ghiLogVaDoiTrangThai(
@@ -363,7 +324,6 @@ async function ghiLogVaDoiTrangThai(
   });
 }
 
-/** Người xử lý chính báo cáo hoàn thành — DANGXULY -> CHO_DUYET */
 export async function baoCaoHoanThanh(nhiemVuId: number, ketQua: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
@@ -373,13 +333,11 @@ export async function baoCaoHoanThanh(nhiemVuId: number, ketQua: string) {
   }
 
   const kq = validateTransition(nv.trangThai, "CHO_DUYET", null, {
-    quyen: session.quyen,
-    laLanhDaoPhongChuTri: false, // hành động cá nhân, quyền thật đã kiểm ở dòng trên
+    quyen: session.quyen as Quyen, // FIX
+    laLanhDaoPhongChuTri: false,
   });
   if (!kq.hopLe) throw new Error(kq.loi);
 
-  // Thứ tự transaction BẮT BUỘC: đọc ketQua cũ -> ghi log chứa bản cũ -> update ketQua mới.
-  // Không được update trước rồi mới ghi log — nếu log lỗi giữa chừng, lịch sử báo cáo mất vĩnh viễn.
   await prisma.$transaction(async (tx: PrismaTx) => {
     const ketQuaCu = nv.ketQua;
     await tx.nhiemVuLog.create({
@@ -400,7 +358,6 @@ export async function baoCaoHoanThanh(nhiemVuId: number, ketQua: string) {
       },
     });
 
-    // Gửi cho TẤT CẢ LĐ phòng chủ trì — 1 phòng có thể có nhiều hơn 1 người giữ quyen=LANHDAOPHONG.
     const dsLanhDao = await tx.nhanVien.findMany({
       where: { maPhong: nv.phongChuTriId, quyen: "LANHDAOPHONG", hoatDong: true },
       select: { maNV: true },
@@ -417,20 +374,19 @@ export async function baoCaoHoanThanh(nhiemVuId: number, ketQua: string) {
   });
 }
 
-/** LĐ phòng chủ trì duyệt — CHO_DUYET -> HOANTHANH */
 export async function duyetHoanThanh(nhiemVuId: number, ghiChu?: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
 
   const kq = validateTransition(nv.trangThai, "HOANTHANH", null, {
-    quyen: session.quyen,
+    quyen: session.quyen as Quyen, // FIX
     laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
   });
   if (!kq.hopLe) throw new Error(kq.loi);
 
   await prisma.$transaction(async (tx: PrismaTx) => {
     await ghiLogVaDoiTrangThai(tx, nhiemVuId, "DUYET_HOANTHANH", "HOANTHANH", session.maNV, ghiChu ?? null, {
-      nguoiDuyetId: session.maNV, // CHỈ set ở đây — đúng nguyên tắc không chọn trước
+      nguoiDuyetId: session.maNV,
       thoiGianHoanThanh: new Date(),
       tienDoPhanTram: 100,
     });
@@ -445,13 +401,12 @@ export async function duyetHoanThanh(nhiemVuId: number, ghiChu?: string) {
   });
 }
 
-/** LĐ phòng chủ trì yêu cầu làm lại — CHO_DUYET -> DANGXULY, bắt buộc lý do */
 export async function yeuCauXuLyLai(nhiemVuId: number, lyDo: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
 
   const kq = validateTransition(nv.trangThai, "DANGXULY", lyDo, {
-    quyen: session.quyen,
+    quyen: session.quyen as Quyen, // FIX
     laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
   });
   if (!kq.hopLe) throw new Error(kq.loi);
@@ -470,13 +425,12 @@ export async function yeuCauXuLyLai(nhiemVuId: number, lyDo: string) {
   });
 }
 
-/** Mở lại — HOANTHANH|TAMDUNG -> DANGXULY, lý do optional */
 export async function moLaiNhiemVu(nhiemVuId: number, ghiChu?: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
 
   const kq = validateTransition(nv.trangThai, "DANGXULY", null, {
-    quyen: session.quyen,
+    quyen: session.quyen as Quyen, // FIX
     laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
   });
   if (!kq.hopLe) throw new Error(kq.loi);
@@ -486,13 +440,12 @@ export async function moLaiNhiemVu(nhiemVuId: number, ghiChu?: string) {
   });
 }
 
-/** Tạm dừng — (DANGXULY|CHO_PHAN_CONG) -> TAMDUNG, bắt buộc lý do */
 export async function tamDungNhiemVu(nhiemVuId: number, lyDo: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
 
   const kq = validateTransition(nv.trangThai, "TAMDUNG", lyDo, {
-    quyen: session.quyen,
+    quyen: session.quyen as Quyen, // FIX
     laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
   });
   if (!kq.hopLe) throw new Error(kq.loi);
@@ -502,13 +455,12 @@ export async function tamDungNhiemVu(nhiemVuId: number, lyDo: string) {
   });
 }
 
-/** Huỷ — (DANGXULY|CHO_PHAN_CONG) -> HUY, bắt buộc lý do, KHÔNG có đường quay lại */
 export async function huyNhiemVu(nhiemVuId: number, lyDo: string) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
 
   const kq = validateTransition(nv.trangThai, "HUY", lyDo, {
-    quyen: session.quyen,
+    quyen: session.quyen as Quyen, // FIX
     laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
   });
   if (!kq.hopLe) throw new Error(kq.loi);
@@ -519,13 +471,11 @@ export async function huyNhiemVu(nhiemVuId: number, lyDo: string) {
 }
 
 // ------------------------------------------------------------------------------------------
-// CRUD CƠ BẢN CÒN LẠI — sửa tiêu đề/nội dung/ưu tiên, đổi hạn, cập nhật tiến độ thủ công.
-// Thuộc phạm vi Phase 1 "Core CRUD" (khác Phase 4 subtask / Phase 5 định kỳ / Phase 6 thông báo).
+// CRUD CƠ BẢN
 // ------------------------------------------------------------------------------------------
 
 const CAC_TRANG_THAI_CHO_SUA_NOI_DUNG: TrangThaiNhiemVu[] = ["CHO_PHAN_CONG", "DANGXULY"];
 
-/** Sửa tieuDe/noiDung/mucDoUuTien — CHỈ khi còn CHO_PHAN_CONG/DANGXULY (mục 4.1 spec) */
 export async function suaThongTinCoBan(
   nhiemVuId: number,
   data: { tieuDe?: string; noiDung?: string; mucDoUuTien?: MucDoUuTien }
@@ -577,7 +527,6 @@ export async function suaThongTinCoBan(
   });
 }
 
-/** Đổi hạn xử lý — không giới hạn theo trạng thái (có thể cần dời hạn cả khi đang xử lý dở) */
 export async function doiHanXuLy(nhiemVuId: number, hanMoi: Date | null) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
@@ -586,8 +535,6 @@ export async function doiHanXuLy(nhiemVuId: number, hanMoi: Date | null) {
     laBGD(session.quyen) || laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId);
   if (!duocPhepThucHien) throw new Error("Chỉ BGĐ hoặc Lãnh đạo phòng chủ trì được đổi hạn.");
 
-  // Không reject hạn quá khứ — chỉ cảnh báo ở UI (đã chốt ở spec mục 6.10). "Quá hạn" luôn tính
-  // động (derived) lúc hiển thị, KHÔNG lưu cứng field boolean ở đây.
   await prisma.$transaction(async (tx: PrismaTx) => {
     await tx.nhiemVu.update({
       where: { id: nhiemVuId },
@@ -605,8 +552,6 @@ export async function doiHanXuLy(nhiemVuId: number, hanMoi: Date | null) {
   });
 }
 
-/** Cập nhật tiến độ % thủ công — CHỈ dùng khi nhiệm vụ CHƯA có subtask (Phase 4 sẽ tự động ẩn ô
- * này trên UI khi subTasks.length > 0, ở đây chặn thêm 1 lớp server-side cho chắc). */
 export async function capNhatTienDoThuCong(nhiemVuId: number, tienDoMoi: number) {
   const session = await requireSession();
   const nv = await layNhiemVuHoacLoi(nhiemVuId);
@@ -641,10 +586,7 @@ export async function capNhatTienDoThuCong(nhiemVuId: number, tienDoMoi: number)
 }
 
 // ------------------------------------------------------------------------------------------
-// PHÂN CÔNG BỔ SUNG — đổi người xử lý chính + sửa danh sách phối hợp, lặp lại được nhiều lần
-// (mục 3.1 spec). KHÔNG phải hành động đổi trangThai theo nghĩa state machine (trừ trường hợp
-// CHO_PHAN_CONG -> DANGXULY khi lần đầu có người xử lý), nên không gọi validateTransition mà tự
-// kiểm tra quyền + điều kiện riêng.
+// PHÂN CÔNG BỔ SUNG
 // ------------------------------------------------------------------------------------------
 
 export async function phanCongBoSung(
@@ -664,7 +606,6 @@ export async function phanCongBoSung(
     throw new Error("Không thể phân công lại nhiệm vụ đã hoàn thành hoặc đã huỷ.");
   }
 
-  // Invariant: xử lý chính không trùng phối hợp — tự động loại khỏi phối hợp nếu trùng.
   const dsPhoiHopSauKhiLoc = nguoiXuLyChinhMoiId
     ? danhSachPhoiHopMoi.filter((ma) => ma !== nguoiXuLyChinhMoiId)
     : danhSachPhoiHopMoi;
@@ -673,21 +614,16 @@ export async function phanCongBoSung(
   const laLanDauCoNguoiXuLy = !nguoiXuLyCuId && !!nguoiXuLyChinhMoiId;
   const coDoiNguoiXuLy = nguoiXuLyCuId !== nguoiXuLyChinhMoiId;
 
-  // Lần đầu gán người xử lý (CHO_PHAN_CONG -> DANGXULY) LÀ 1 transition thật trên bản ghi đã tồn
-  // tại — đi qua validateTransition() để nhất quán với nguyên tắc "mọi đổi trangThai phải qua state
-  // machine", dù bảng transition đã cho phép sẵn trường hợp này (khác lúc TẠO MỚI: tạo mới là INSERT,
-  // không có "trạng thái trước đó" để mà transition, nên không áp dụng cùng yêu cầu).
   let denTrangThai = nv.trangThai;
   if (laLanDauCoNguoiXuLy) {
     const kq = validateTransition(nv.trangThai, "DANGXULY", null, {
-      quyen: session.quyen,
+      quyen: session.quyen as Quyen, // FIX
       laLanhDaoPhongChuTri: laLanhDaoPhongChuTri(session.quyen, session.maPhong, nv.phongChuTriId),
     });
     if (!kq.hopLe) throw new Error(kq.loi);
     denTrangThai = "DANGXULY";
   }
 
-  // ===== ĐỌC TRƯỚC, NGOÀI TRANSACTION (cùng lý do đã sửa ở taoNhiemVu) =====
   const dsMaNVCanKiemTra = [
     ...(nguoiXuLyChinhMoiId ? [nguoiXuLyChinhMoiId] : []),
     ...dsPhoiHopSauKhiLoc,
@@ -714,7 +650,6 @@ export async function phanCongBoSung(
     return { nhiemVuId, maNV, maPhong: nv.maPhong, tenPhongLucDo: nv.phong.tenPhong };
   });
 
-  // ===== CHỈ GHI =====
   await prisma.$transaction(
     async (tx: PrismaTx) => {
       await tx.nhiemVu.update({
@@ -747,9 +682,6 @@ export async function phanCongBoSung(
         }
       }
 
-      // Đồng bộ lại danh sách phối hợp: xoá hết rồi tạo lại theo danh sách mới — đơn giản, đúng cho
-      // quy mô nhỏ (vài người/nhiệm vụ). Dữ liệu đã chuẩn bị sẵn ở duLieuPhoiHopMoi, transaction
-      // không còn phải đọc gì thêm.
       if (canDongBoLaiPhoiHop) {
         await tx.nhiemVuNguoiPhoiHop.deleteMany({ where: { nhiemVuId } });
         if (duLieuPhoiHopMoi.length > 0) {
@@ -770,8 +702,7 @@ export async function phanCongBoSung(
 }
 
 // ------------------------------------------------------------------------------------------
-// ĐỔI PHÒNG CHỦ TRÌ — chỉ BGĐ. Reset người xử lý + về CHO_PHAN_CONG + loại phòng phối hợp trùng,
-// TẤT CẢ trong 1 transaction (invariant đã chốt ở spec mục 3.2).
+// ĐỔI PHÒNG CHỦ TRÌ
 // ------------------------------------------------------------------------------------------
 
 export async function doiPhongChuTri(nhiemVuId: number, phongMoiId: string, lyDo: string) {
@@ -792,7 +723,6 @@ export async function doiPhongChuTri(nhiemVuId: number, phongMoiId: string, lyDo
   }
 
   await prisma.$transaction(async (tx: PrismaTx) => {
-    // Loại phòng mới khỏi danh sách phối hợp NẾU đang trùng — tránh 1 phòng vừa chủ trì vừa phối hợp.
     await tx.nhiemVuPhong.deleteMany({ where: { nhiemVuId, maPhong: phongMoiId } });
 
     await tx.nhiemVu.update({
@@ -819,17 +749,9 @@ export async function doiPhongChuTri(nhiemVuId: number, phongMoiId: string, lyDo
 }
 
 // ------------------------------------------------------------------------------------------
-// PHASE 4 — SUBTASK (checklist con). Quyết định mặc định (CHƯA được xác nhận riêng trong hội
-// thoại, áp dụng theo đúng tinh thần đơn giản đã chốt xuyên suốt): CHỈ người xử lý chính được
-// thêm/sửa/tick/xoá — LĐ phòng xem qua trang chi tiết nhưng không can thiệp trực tiếp vào
-// checklist của người xử lý. Không giới hạn cứng số lượng subtask (chỉ giới hạn độ dài nội dung).
-// CẦN BẠN XÁC NHẬN LẠI nếu muốn khác (VD: cho LĐ phòng sửa/xoá, hoặc gán subtask cho từng người
-// phối hợp riêng).
+// PHASE 4 — SUBTASK
 // ------------------------------------------------------------------------------------------
 
-/** Tính lại tienDoPhanTram từ subtask — công thức đơn giản, không trọng số (đã chốt ở spec mục 6.5).
- * Nếu KHÔNG còn subtask nào (đã xoá hết), GIỮ NGUYÊN tienDoPhanTram hiện có — không tự reset về 0,
- * để chuyển êm sang chế độ nhập tay mà không mất dữ liệu (spec mục 6.6). */
 async function tinhLaiTienDoTuSubTask(tx: PrismaTx, nhiemVuId: number) {
   const subTasks = await tx.nhiemVuSubTask.findMany({ where: { nhiemVuId } });
   if (subTasks.length === 0) return;
@@ -857,7 +779,6 @@ export async function themSubTask(nhiemVuId: number, noiDung: string) {
     await tx.nhiemVuSubTask.create({
       data: { nhiemVuId, noiDung, thuTu: soLuong, nguoiTaoId: session.maNV },
     });
-    // Thêm subtask mới (chưa tick) làm tổng số tăng -> % giảm tương ứng, cần tính lại ngay.
     await tinhLaiTienDoTuSubTask(tx, nhiemVuId);
   });
 }
@@ -887,7 +808,6 @@ export async function tickSubTask(subTaskId: number, daHoanThanh: boolean) {
         thoiGianHoanThanh: daHoanThanh ? new Date() : null,
       },
     });
-    // Cố ý KHÔNG ghi NhiemVuLog cho từng lần tick — tránh loãng timeline chính (đã chốt spec mục 6.4).
     await tinhLaiTienDoTuSubTask(tx, sub.nhiemVuId);
   });
 }
@@ -900,20 +820,14 @@ export async function xoaSubTask(subTaskId: number) {
 
   await prisma.$transaction(async (tx: PrismaTx) => {
     await tx.nhiemVuSubTask.update({ where: { id: subTaskId }, data: { isDeleted: true } });
-    // Nếu đây là subtask cuối cùng, tinhLaiTienDoTuSubTask() tự bỏ qua (count=0) -> tienDoPhanTram
-    // giữ nguyên giá trị hiện có, đúng hành vi "chuyển êm sang nhập tay" đã chốt.
     await tinhLaiTienDoTuSubTask(tx, sub.nhiemVuId);
   });
 }
 
 // ------------------------------------------------------------------------------------------
-// PHASE 5 — NHẮC ĐỊNH KỲ: "Xong đợt". Người xử lý chính tự tick, KHÔNG qua duyệt LĐ phòng (đã
-// chốt). Reset tiến độ + (nếu có subtask) reset checklist cho đợt mới + tính ngày nhắc kế tiếp +
-// tự tắt dungNhacLai nếu vượt ngayKetThucNhac.
+// PHASE 5 — NHẮC ĐỊNH KỲ
 // ------------------------------------------------------------------------------------------
 
-/** Cộng thêm N tháng vào 1 ngày, GIỮ NGUYÊN "ngày trong tháng" — kẹp về ngày cuối tháng đích nếu
- * ngày gốc không tồn tại ở đó (VD: 31/01 + 1 tháng -> 28 hoặc 29/02, không tự nhảy sang tháng 3). */
 function addThangGiuNgay(date: Date, soThang: number): Date {
   const nam = date.getUTCFullYear();
   const thang = date.getUTCMonth();
@@ -960,8 +874,6 @@ export async function hoanThanhDotDinhKy(nhiemVuId: number) {
   const soDotMoi = nv.soDotDaXong + 1;
 
   await prisma.$transaction(async (tx: PrismaTx) => {
-    // Reset checklist cho đợt mới NẾU nhiệm vụ đang dùng chế độ subtask — tránh đợt mới hiển thị
-    // 100% kế thừa từ đợt cũ (đã chốt spec mục 6.7).
     await tx.nhiemVuSubTask.updateMany({
       where: { nhiemVuId, isDeleted: false },
       data: { daHoanThanh: false, nguoiHoanThanhId: null, thoiGianHoanThanh: null },
@@ -978,8 +890,6 @@ export async function hoanThanhDotDinhKy(nhiemVuId: number) {
       },
     });
 
-    // Action log RIÊNG (HOAN_THANH_DOT_DINH_KY), KHÔNG dùng chung BAO_CAO_HOANTHANH — để phân biệt
-    // rõ trên timeline giữa "báo cáo hoàn thành nhiệm vụ thật" và "xong 1 đợt định kỳ" (đã chốt).
     await tx.nhiemVuLog.create({
       data: {
         nhiemVuId,
@@ -992,10 +902,10 @@ export async function hoanThanhDotDinhKy(nhiemVuId: number) {
 }
 
 // ------------------------------------------------------------------------------------------
-// PHASE 7 — DASHBOARD: cảnh báo hạn, thống kê tổng quan, tra cứu có phân trang server-side.
+// PHASE 7 — DASHBOARD
 // ------------------------------------------------------------------------------------------
 
-const SO_NGAY_CANH_BAO = 3; // đã chốt: dùng chung 3 ngày cho cả nhiệm vụ thường và định kỳ
+const SO_NGAY_CANH_BAO = 3;
 
 export type CanhBaoRow = {
   id: number;
@@ -1004,7 +914,6 @@ export type CanhBaoRow = {
   moc: Date;
 };
 
-/** Phạm vi dữ liệu tự co theo quyền — BGĐ toàn đơn vị, LĐ phòng phạm vi phòng, user thường "của tôi". */
 function phamViTheoQuyen(session: { quyen: string; maPhong: string; maNV: string }) {
   if (session.quyen === "LANHDAODONVI") return {};
   if (session.quyen === "LANHDAOPHONG") return { phongChuTriId: session.maPhong };
@@ -1096,8 +1005,7 @@ export async function getThongKeTongQuan(): Promise<ThongKeTongQuan> {
 }
 
 // ------------------------------------------------------------------------------------------
-// TRA CỨU — công khai (ai đăng nhập cũng xem), phân trang SERVER-SIDE (khác Phòng/Của tôi vốn
-// phân trang client-side vì quy mô nhỏ — Tra cứu là toàn cơ quan, có thể nhiều dữ liệu hơn).
+// TRA CỨU
 // ------------------------------------------------------------------------------------------
 
 const SO_DONG_TRA_CUU = 15;
@@ -1115,7 +1023,7 @@ export type TraCuuParams = {
   tuKhoa?: string;
   chiQuaHan?: boolean;
   trang?: number;
-  soDongMoiTrang?: number; // MỚI — cho phép người dùng chọn 10/25/50, mặc định giữ 15 như cũ
+  soDongMoiTrang?: number;
 };
 
 export async function traCuuNhiemVu(params: TraCuuParams): Promise<{ rows: NhiemVuRow[]; tongSo: number }> {
@@ -1143,9 +1051,6 @@ export async function traCuuNhiemVu(params: TraCuuParams): Promise<{ rows: Nhiem
     ];
   }
 
-  // LƯU Ý: nếu vừa chọn "chỉ quá hạn" vừa chọn 1 trangThai cụ thể (VD: HOANTHANH) — 2 điều kiện này
-  // mâu thuẫn nghiệp vụ (đã hoàn thành thì không thể "quá hạn" nữa) — ưu tiên chiQuaHan, bỏ qua lựa
-  // chọn trangThai của người dùng trong trường hợp đó thay vì để where rỗng bất thường.
   if (params.chiQuaHan) {
     const homNay = new Date();
     homNay.setHours(0, 0, 0, 0);
@@ -1172,14 +1077,8 @@ export async function traCuuNhiemVu(params: TraCuuParams): Promise<{ rows: Nhiem
   return { rows: rows.map(toRow), tongSo };
 }
 
-// Ghi chú: hàm suaThongTinCoBan() đã được định nghĩa đầy đủ ở phần "CRUD CƠ BẢN CÒN LẠI" phía trên
-// (gần đầu file, ngay sau huyNhiemVu()) — dùng đúng logic mô tả ở spec mục 4.1. Không định nghĩa
-// lại ở đây để tránh lỗi "Duplicate function implementation".
-
 // ------------------------------------------------------------------------------------------
-// NGƯỜI PHỐI HỢP TỰ CẬP NHẬT — ghi chú đóng góp + đánh dấu hoàn thành PHẦN VIỆC của riêng họ.
-// KHÁC với báo cáo hoàn thành của người xử lý chính: đây chỉ là theo dõi cho từng cá nhân phối
-// hợp, KHÔNG ảnh hưởng trangThai hay tienDoPhanTram chung của cả NhiemVu.
+// NGƯỜI PHỐI HỢP TỰ CẬP NHẬT
 // ------------------------------------------------------------------------------------------
 
 export async function capNhatPhoiHopCuaToi(
@@ -1210,8 +1109,6 @@ export async function capNhatPhoiHopCuaToi(
       },
     });
 
-    // Tận dụng action log có sẵn DONG_GOP_PHOIHOP (không thêm enum mới) — ghi rõ trong ghiChu đây
-    // là cập nhật ghi chú hay đánh dấu hoàn thành phần việc, để phân biệt khi đọc lại timeline.
     const moTa =
       data.daHoanThanhPhanViec !== undefined
         ? data.daHoanThanhPhanViec
@@ -1230,10 +1127,7 @@ export async function capNhatPhoiHopCuaToi(
 }
 
 // ------------------------------------------------------------------------------------------
-// TRANG "NHIỆM VỤ TÔI GIAO" — dành cho BGĐ/LĐ phòng theo dõi những nhiệm vụ họ đứng tên Người
-// giao (nguoiGiaoId), xem đang thực hiện tới đâu — KHÁC "Nhiệm vụ của tôi" (vốn lọc theo Xử lý
-// chính/Phối hợp) và KHÁC "Nhiệm vụ Phòng" (lọc theo phòng chủ trì, chỉ LĐ đúng phòng đó xem được).
-// Người giao có thể ở phòng khác/BGĐ nên không dùng lại getNhiemVuPhong().
+// NHIỆM VỤ TÔI GIAO
 // ------------------------------------------------------------------------------------------
 
 export async function getNhiemVuToiGiao(): Promise<NhiemVuRow[]> {

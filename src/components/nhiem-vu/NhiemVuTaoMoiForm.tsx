@@ -1,4 +1,3 @@
-// ĐÍCH: src/components/nhiem-vu/NhiemVuTaoMoiForm.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -26,15 +25,12 @@ const TAN_SUAT_OPTIONS: { value: TanSuatNhac; label: string }[] = [
   { value: "HANG_NAM", label: "Hàng năm" },
 ];
 
-// Danh mục lỗi field — dùng để bôi viền đỏ + biết cần focus/cuộn tới đâu. Không cần enum phức tạp,
-// chỉ là key nội bộ của form này.
-type TruongLoi = "tieuDe" | "phongChuTri" | "nguoiGiao" | "ngayBatDauNhac" | null;
+// Danh mục lỗi field — dùng để bôi viền đỏ + biết cần focus/cuộn tới đâu.
+// Chỉ các field có ref (tieuDe / phongChuTri / nguoiGiao); ngayBatDauNhac chỉ toast.
+type TruongLoi = "tieuDe" | "phongChuTri" | "nguoiGiao" | null;
 
 export default function NhiemVuTaoMoiForm(props: {
   phongMacDinh?: string;
-  // MỚI — cho phép truyền sẵn danh mục từ Server Component (page.tsx) để tránh form phải tự gọi
-  // Server Action lúc mount (mỗi lần tốn 1 round-trip riêng, cộng dồn độ trễ DB). Optional để
-  // không phá vỡ nơi khác lỡ dùng component này mà chưa truyền — khi đó fallback tự fetch như cũ.
   dsPhongBanDau?: Phong[];
   dsNhanVienBanDau?: NhanVien[];
 }) {
@@ -86,13 +82,11 @@ function NoiDungForm({
   const [truongLoi, setTruongLoi] = useState<TruongLoi>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const refTieuDe = useRef<HTMLInputElement>(null);
+  // Wrapper div cho tiêu đề (Input không forwardRef) — dùng để scroll/focus
+  const refTieuDe = useRef<HTMLDivElement>(null);
   const refPhongChuTri = useRef<HTMLSelectElement>(null);
   const refNguoiGiao = useRef<HTMLSelectElement>(null);
 
-  // Chỉ tự fetch khi KHÔNG được truyền sẵn từ server (fallback cho nơi khác lỡ dùng component này
-  // mà chưa kịp sửa page.tsx truyền props) — trang /nhiem-vu/tao-moi thật đã truyền sẵn nên nhánh
-  // này không chạy, tránh 2 round-trip chậm như log bạn gặp trước đó.
   useEffect(() => {
     if (dsPhongBanDau && dsNhanVienBanDau) return;
     getPhongList().then(setDsPhong);
@@ -154,17 +148,6 @@ function NoiDungForm({
     [dsPhong, phongChuTriId]
   );
 
-  // Báo lỗi bằng Toast (không phụ thuộc vị trí cuộn màn hình — luôn hiện góc dưới-phải) + tự cuộn
-  // và focus về đúng ô đang thiếu. Trước đây chỉ có khung đỏ phía trên, nếu người dùng đã cuộn
-  // xuống thấy mất, không hiểu vì sao bấm "Giao nhiệm vụ" không có phản hồi gì.
-  // BUG đã sửa: trước đây chọn "Người xử lý chính" KHÔNG kiểm tra người đó có đang nằm trong danh
-  // sách "Người phối hợp" hay không — dsPhoiHopOptions chỉ lọc chiều NGƯỢC LẠI (ẩn xử lý chính
-  // khỏi danh sách CHỌN phối hợp), nhưng nếu 1 người ĐÃ được chọn phối hợp từ trước, rồi sau đó
-  // mới chọn họ làm xử lý chính, giá trị cũ trong nguoiPhoiHopIds vẫn còn nguyên trong state ->
-  // gửi lên server bị chặn bởi invariant "xử lý chính không được trùng phối hợp" (lỗi "Lưu thất
-  // bại" mà không rõ vì sao, vì UI không tự hiện chip đã chọn đó nữa do dsPhoiHopOptions đã lọc nó
-  // ra khỏi danh sách HIỂN THỊ, nhưng KHÔNG xoá khỏi state đã chọn). Sửa: mỗi lần đổi xử lý chính,
-  // chủ động loại người đó khỏi nguoiPhoiHopIds + báo toast cho người dùng biết vì sao.
   function handleChonNguoiXuLyChinh(maNVMoi: string) {
     setNguoiXuLyChinhId(maNVMoi);
     if (maNVMoi && nguoiPhoiHopIds.includes(maNVMoi)) {
@@ -181,7 +164,14 @@ function NoiDungForm({
   function baoLoi(truong: Exclude<TruongLoi, null>, thongDiep: string) {
     setTruongLoi(truong);
     show("error", "Chưa thể lưu", thongDiep);
-    const ref = { tieuDe: refTieuDe, phongChuTri: refPhongChuTri, nguoiGiao: refNguoiGiao }[truong];
+
+    if (truong === "tieuDe") {
+      refTieuDe.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      refTieuDe.current?.querySelector("input")?.focus();
+      return;
+    }
+
+    const ref = truong === "phongChuTri" ? refPhongChuTri : refNguoiGiao;
     ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     ref.current?.focus();
   }
@@ -198,9 +188,6 @@ function NoiDungForm({
 
     setIsSubmitting(true);
     try {
-      // Tự thêm "https://" nếu người dùng gõ thiếu (VD: "drive.google.com/..." thay vì
-      // "https://drive.google.com/...") — tránh lưu link tương đối gây lỗi hiển thị ở trang chi
-      // tiết (link bị nối vào path hiện tại thay vì mở đúng trang ngoài).
       const linkFileChuanHoa = linkFile.trim()
         ? /^https?:\/\//i.test(linkFile.trim())
           ? linkFile.trim()
@@ -243,12 +230,11 @@ function NoiDungForm({
         <h1 className="mb-6 text-xl font-semibold text-gray-800 dark:text-white/90">Giao nhiệm vụ</h1>
 
         <div className="space-y-5">
-          <div>
+          <div ref={refTieuDe}>
             <Label>
               Tiêu đề <span className="text-error-500">*</span>
             </Label>
             <Input
-              ref={refTieuDe}
               value={tieuDe}
               onChange={(e) => {
                 setTieuDe(e.target.value);
