@@ -30,6 +30,7 @@ type NavItem = {
 // ==========================================================================================
 // ====================              MENU "QUẢN TRỊ" — GIỮ NGUYÊN          =================
 // ==========================================================================================
+// Chưa bắt đầu viết phần này — giữ nguyên làm tham khảo UI, chưa dọn lại tên/đường dẫn.
 const adminItems: NavItem[] = [
   {
     icon: <UserCircleIcon />,
@@ -107,38 +108,31 @@ const adminItems: NavItem[] = [
 // ==========================================================================================
 // ====================              MENU "CÔNG VIỆC"                      =================
 // ==========================================================================================
-function getNavItems(quyen?: string): NavItem[] {
-  const isLanhDaoPhong = quyen === "LANHDAOPHONG";
-  const isLanhDaoCoQuan = quyen === "LANHDAODONVI";
-  const isLanhDao = isLanhDaoPhong || isLanhDaoCoQuan;
-
+// Mỗi mục dẫn thẳng tới 1 TRANG DUY NHẤT — trang đó tự quản lý tab con "Nhập" / "Xem lại"
+// bên trong (giống bản Apps Script cũ dùng subTab), KHÔNG tách thành nhiều route riêng.
+// Lý do: sidebar gọn hơn nhiều (3 mục thay vì 8), và giữ đúng luồng thao tác người dùng
+// đã quen (chuyển tab tại chỗ, không load lại trang / mất ngữ cảnh tuần đang chọn).
+// "Toàn bộ phòng" (trước đây là tab "Toàn bộ" bên trong board Kế hoạch/Báo cáo cá nhân, chỉ lãnh
+// đạo phòng/đơn vị thấy) — nay CHUYỂN RA thành 2 mục menu riêng, bắt vào menu trái thay vì bắt
+// theo tab, và chỉ hiện với người có quyen LANHDAOPHONG/LANHDAODONVI. Đặt là hàm (thay vì const
+// tĩnh) vì cần biết quyen của người đang đăng nhập mới quyết định được có thêm 2 mục này hay
+// không.
+function getNavItems(isLanhDao: boolean): NavItem[] {
   return [
-    // ---------- CÁ NHÂN ----------
     {
-      icon: <UserCircleIcon />,
+      icon: <GridIcon />,
       name: "Cá nhân",
       subItems: [
         { name: "Kế hoạch", path: "/ca-nhan/ke-hoach", pro: false },
         { name: "Báo cáo", path: "/ca-nhan/bao-cao", pro: false },
-
         ...(isLanhDao
           ? [
-              {
-                name: "Kế hoạch (Toàn bộ phòng)",
-                path: "/ca-nhan/ke-hoach-toan-phong",
-                pro: false,
-              },
-              {
-                name: "Báo cáo (Toàn bộ phòng)",
-                path: "/ca-nhan/bao-cao-toan-phong",
-                pro: false,
-              },
-            ]
+            { name: "Kế hoạch (Toàn bộ phòng)", path: "/ca-nhan/ke-hoach-toan-phong", pro: false },
+            { name: "Báo cáo (Toàn bộ phòng)", path: "/ca-nhan/bao-cao-toan-phong", pro: false },
+          ]
           : []),
       ],
     },
-
-    // ---------- PHÒNG ----------
     {
       icon: <GridIcon />,
       name: "Phòng",
@@ -147,75 +141,56 @@ function getNavItems(quyen?: string): NavItem[] {
         { name: "Báo cáo", path: "/phong/bao-cao", pro: false },
       ],
     },
-
-    // ---------- NHIỆM VỤ ----------
-    {
-      icon: <ListIcon />,
+       {
+      icon: <GridIcon />,
       name: "Nhiệm vụ",
       subItems: [
-        // Chỉ Lãnh đạo mới được tạo mới & xem đã giao
-        ...(isLanhDao
-          ? [
-              { name: "Nhiệm vụ tạo mới", path: "/nhiem-vu/tao-moi", pro: false },
-              { name: "Nhiệm vụ đã giao", path: "/nhiem-vu/toi-giao", pro: false },
-            ]
-          : []),
-
-        // Các mục còn lại ai cũng thấy
-        { name: "Nhiệm vụ của tôi", path: "/nhiem-vu", pro: false },
+          { name: "Nhiệm vụ tạo mới", path: "/nhiem-vu/tao-moi", pro: false },
+        { name: "Nhiệm vụ Của tôi", path: "/nhiem-vu", pro: false },
+        { name: "Nhiệm vụ đã giao", path: "/nhiem-vu/toi-giao", pro: false },
         { name: "Nhiệm vụ phòng", path: "/nhiem-vu/phong", pro: false },
         { name: "Nhiệm vụ thống kê", path: "/nhiem-vu/thong-ke", pro: false },
-        { name: "Nhiệm vụ tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
+        { name: "Nhiệm vụ Tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
       ],
     },
   ];
 }
+
 // ==========================================================================================
 // ====================              MENU "TRA CỨU"                        =================
 // ==========================================================================================
 const SearchItems: NavItem[] = [
   {
-    icon: <PieChartIcon />,
+    icon: <GridIcon />,
     name: "Tra cứu",
     subItems: [
       { name: "Kế hoạch", path: "/tra-cuu/ke-hoach", pro: false },
       { name: "Báo cáo", path: "/tra-cuu/bao-cao", pro: false },
+      // { name: "Nhiệm vụ", path: "/tra-cuu/nhiem-vu", pro: false },
     ],
   },
   {
-    icon: <CalenderIcon />,
+    icon: <GridIcon />,
     name: "Liên kết công việc",
     subItems: [
-      {
-        name: "Lịch công tác cơ quan",
-        path: "https://soyte-vlg.vercel.app/en/lich-ct",
-        pro: false,
-      },
-      {
-        name: "Lịch phòng họp",
-        path: "https://soyte-vlg.vercel.app/en/lich-phong-hop",
-        pro: false,
-      },
-      {
-        name: "Check list giao ban",
-        path: "https://soyte-vlg.vercel.app/en/check-list/giao-ban",
-        pro: false,
-      },
+      { name: "Lịch công tác cơ quan", path: "https://soyte-vlg.vercel.app/en/lich-ct", pro: false },
+      { name: "Lịch phòng họp", path: "https://soyte-vlg.vercel.app/en/lich-phong-hop", pro: false },
+      { name: "Check list giao ban", path: "https://soyte-vlg.vercel.app/en/check-list/giao-ban", pro: false },
     ],
   },
   {
-    icon: <PlugInIcon />,
+    icon: <GridIcon />,
     name: "Liên kết Tiện ích",
     subItems: [
-      {
-        name: "Tạo mã QR",
-        path: "https://www.websiteplanet.com/vi/webtools/free-qr-code-generator/",
-        pro: false,
-      },
+      { name: "Tạo mã QR", path: "https://www.websiteplanet.com/vi/webtools/free-qr-code-generator/", pro: false },
     ],
   },
 ];
 
+// Tra theo menuType -> đúng mảng dữ liệu đang được render cho menuType đó. Dùng object thay vì
+// if/else rải rác để useEffect bên dưới không bao giờ lệch với những gì renderMenuItems() đang
+// hiển thị thật (lỗi cũ: useEffect tự dò theo biến "othersItems" trong khi màn hình lại render
+// "SearchItems" cho menuType "others" — 2 nguồn dữ liệu khác nhau nên tự-mở-submenu bị sai).
 type MenuType = "main" | "others" | "admin";
 
 const AppSidebar: React.FC = () => {
@@ -223,10 +198,11 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const user = useAuth();
 
-  // Lấy quyền từ session (đã có trong AuthContext)
-  const quyen = user?.quyen; // "USER" | "LANHDAOPHONG" | "LANHDAODONVI"
-  const navItems = getNavItems(quyen);
-
+  // Giả định user.quyen tồn tại trên đối tượng trả về từ useAuth() (đã được lưu ý ở lần sửa
+  // trước, dùng chung cho tab "Toàn bộ" cũ) — nếu chưa có field này trên context thì 2 mục menu
+  // "Toàn bộ phòng" sẽ không hiện cho ai cả, cần bổ sung field quyen vào AuthContext.
+  const isLanhDao = user?.quyen === "LANHDAOPHONG" || user?.quyen === "LANHDAODONVI";
+  const navItems = getNavItems(isLanhDao);
   const allMenus: Record<MenuType, NavItem[]> = {
     main: navItems,
     others: SearchItems,
@@ -240,33 +216,32 @@ const AppSidebar: React.FC = () => {
           {nav.subItems ? (
             <button
               onClick={() => handleSubmenuToggle(index, menuType)}
-              className={`menu-item group ${
-                openSubmenu?.type === menuType && openSubmenu?.index === index
-                  ? "menu-item-active"
-                  : "menu-item-inactive"
-              } cursor-pointer ${
-                !isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
-              }`}
+              className={`menu-item group  ${openSubmenu?.type === menuType && openSubmenu?.index === index
+                ? "menu-item-active"
+                : "menu-item-inactive"
+                } cursor-pointer ${!isExpanded && !isHovered
+                  ? "lg:justify-center"
+                  : "lg:justify-start"
+                }`}
             >
               <span
-                className={`${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? "menu-item-icon-active"
-                    : "menu-item-icon-inactive"
-                }`}
+                className={` ${openSubmenu?.type === menuType && openSubmenu?.index === index
+                  ? "menu-item-icon-active"
+                  : "menu-item-icon-inactive"
+                  }`}
               >
                 {nav.icon}
               </span>
               {(isExpanded || isHovered || isMobileOpen) && (
-                <span className="menu-item-text">{nav.name}</span>
+                <span className={`menu-item-text`}>{nav.name}</span>
               )}
               {(isExpanded || isHovered || isMobileOpen) && (
                 <ChevronDownIcon
-                  className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                    openSubmenu?.type === menuType && openSubmenu?.index === index
-                      ? "rotate-180 text-brand-500"
-                      : ""
-                  }`}
+                  className={`ml-auto w-5 h-5 transition-transform duration-200  ${openSubmenu?.type === menuType &&
+                    openSubmenu?.index === index
+                    ? "rotate-180 text-brand-500"
+                    : ""
+                    }`}
                 />
               )}
             </button>
@@ -274,26 +249,23 @@ const AppSidebar: React.FC = () => {
             nav.path && (
               <Link
                 href={nav.path}
-                className={`menu-item group ${
-                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
-                }`}
+                className={`menu-item group ${isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                  }`}
               >
                 <span
-                  className={`${
-                    isActive(nav.path)
-                      ? "menu-item-icon-active"
-                      : "menu-item-icon-inactive"
-                  }`}
+                  className={`${isActive(nav.path)
+                    ? "menu-item-icon-active"
+                    : "menu-item-icon-inactive"
+                    }`}
                 >
                   {nav.icon}
                 </span>
                 {(isExpanded || isHovered || isMobileOpen) && (
-                  <span className="menu-item-text">{nav.name}</span>
+                  <span className={`menu-item-text`}>{nav.name}</span>
                 )}
               </Link>
             )
           )}
-
           {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
             <div
               ref={(el) => {
@@ -308,6 +280,44 @@ const AppSidebar: React.FC = () => {
               }}
             >
               <ul className="mt-2 space-y-1 ml-9">
+                {/* {nav.subItems.map((subItem) => (
+                  <li key={subItem.name}>
+                    <Link
+                      href={subItem.path}
+                      className={`menu-dropdown-item ${
+                        isActive(subItem.path)
+                          ? "menu-dropdown-item-active"
+                          : "menu-dropdown-item-inactive"
+                      }`}
+                    >
+                      {subItem.name}
+                      <span className="flex items-center gap-1 ml-auto">
+                        {subItem.new && (
+                          <span
+                            className={`ml-auto ${
+                              isActive(subItem.path)
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
+                            } menu-dropdown-badge `}
+                          >
+                            new
+                          </span>
+                        )}
+                        {subItem.pro && (
+                          <span
+                            className={`ml-auto ${
+                              isActive(subItem.path)
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
+                            } menu-dropdown-badge `}
+                          >
+                            pro
+                          </span>
+                        )}
+                      </span>
+                    </Link>
+                  </li>
+                ))} */}
                 {nav.subItems.map((subItem) => {
                   const isExternal = subItem.path.startsWith("http");
 
@@ -317,33 +327,31 @@ const AppSidebar: React.FC = () => {
                         href={subItem.path}
                         target={isExternal ? "_blank" : undefined}
                         rel={isExternal ? "noopener noreferrer" : undefined}
-                        className={`menu-dropdown-item ${
-                          isActive(subItem.path)
-                            ? "menu-dropdown-item-active"
-                            : "menu-dropdown-item-inactive"
-                        }`}
+                        className={`menu-dropdown-item ${isActive(subItem.path)
+                          ? "menu-dropdown-item-active"
+                          : "menu-dropdown-item-inactive"
+                          }`}
                       >
                         {subItem.name}
 
                         <span className="flex items-center gap-1 ml-auto">
                           {subItem.new && (
                             <span
-                              className={`ml-auto ${
-                                isActive(subItem.path)
-                                  ? "menu-dropdown-badge-active"
-                                  : "menu-dropdown-badge-inactive"
-                              } menu-dropdown-badge`}
+                              className={`ml-auto ${isActive(subItem.path)
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
+                                } menu-dropdown-badge`}
                             >
                               new
                             </span>
                           )}
+
                           {subItem.pro && (
                             <span
-                              className={`ml-auto ${
-                                isActive(subItem.path)
-                                  ? "menu-dropdown-badge-active"
-                                  : "menu-dropdown-badge-inactive"
-                              } menu-dropdown-badge`}
+                              className={`ml-auto ${isActive(subItem.path)
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
+                                } menu-dropdown-badge`}
                             >
                               pro
                             </span>
@@ -365,16 +373,18 @@ const AppSidebar: React.FC = () => {
     type: MenuType;
     index: number;
   } | null>(null);
-
-  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
+  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
+    {}
+  );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isActive = useCallback((path: string) => path === pathname, [pathname]);
 
-  // Tự mở submenu khi vào trang con
   useEffect(() => {
+    // Tự bung đúng submenu tương ứng khi vào thẳng 1 trang con bằng URL (VD: bookmark, F5,
+    // hoặc điều hướng từ nơi khác) — dò trên ĐÚNG dữ liệu đang render (allMenus), không dò
+    // trên biến rời rạc dễ lệch như trước.
     let submenuMatched = false;
-
     (Object.keys(allMenus) as MenuType[]).forEach((menuType) => {
       allMenus[menuType].forEach((nav, index) => {
         nav.subItems?.forEach((subItem) => {
@@ -391,13 +401,13 @@ const AppSidebar: React.FC = () => {
     }
   }, [pathname, isActive]);
 
-  // Tính chiều cao submenu khi mở
   useEffect(() => {
+    // Set the height of the submenu items when the submenu is opened
     if (openSubmenu !== null) {
       const key = `${openSubmenu.type}-${openSubmenu.index}`;
       if (subMenuRefs.current[key]) {
-        setSubMenuHeight((prev) => ({
-          ...prev,
+        setSubMenuHeight((prevHeights) => ({
+          ...prevHeights,
           [key]: subMenuRefs.current[key]?.scrollHeight || 0,
         }));
       }
@@ -405,8 +415,12 @@ const AppSidebar: React.FC = () => {
   }, [openSubmenu]);
 
   const handleSubmenuToggle = (index: number, menuType: MenuType) => {
-    setOpenSubmenu((prev) => {
-      if (prev && prev.type === menuType && prev.index === index) {
+    setOpenSubmenu((prevOpenSubmenu) => {
+      if (
+        prevOpenSubmenu &&
+        prevOpenSubmenu.type === menuType &&
+        prevOpenSubmenu.index === index
+      ) {
         return null;
       }
       return { type: menuType, index };
@@ -416,10 +430,9 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
-        ${
-          isExpanded || isMobileOpen
-            ? "w-[290px]"
-            : isHovered
+        ${isExpanded || isMobileOpen
+          ? "w-[290px]"
+          : isHovered
             ? "w-[290px]"
             : "w-[90px]"
         }
@@ -428,31 +441,32 @@ const AppSidebar: React.FC = () => {
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Logo */}
       <div
-        className={`py-8 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
-        }`}
+        className={`py-8 flex  ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+          }`}
       >
         <Link href="/" className="hidden lg:block">
           {isExpanded || isHovered || isMobileOpen ? (
-            <div className="flex items-center gap-3 text-[20px] font-semibold text-gray-900 dark:text-white">
-              <Image
-                className="dark:hidden"
-                src="/images/logo/logo.png"
-                alt="Logo"
-                width={40}
-                height={40}
-              />
-              <Image
-                className="hidden dark:block"
-                src="/images/logo/logo.png"
-                alt="Logo"
-                width={40}
-                height={40}
-              />
-              Hệ thống QLCV
-            </div>
+            <>
+
+              <div className="flex items-center gap-3 text-[20px] font-semibold text-gray-900 dark:text-white">
+                <Image
+                  className="dark:hidden"
+                  src="/images/logo/logo.png"
+                  alt="Logo"
+                  width={40}
+                  height={40}
+                />
+                <Image
+                  className="hidden dark:block"
+                  src="/images/logo/logo.png"
+                  alt="Logo"
+                  width={40}
+                  height={40}
+                />
+                Hệ thống QLCV</div>
+
+            </>
           ) : (
             <Image
               src="/images/logo/logo-icon.svg"
@@ -463,19 +477,15 @@ const AppSidebar: React.FC = () => {
           )}
         </Link>
       </div>
-
-      {/* Menu */}
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
-            {/* ===== CÔNG VIỆC ===== */}
             <div>
               <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
+                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
+                  ? "lg:justify-center"
+                  : "justify-start"
+                  }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
                   "Công việc"
@@ -486,14 +496,12 @@ const AppSidebar: React.FC = () => {
               {renderMenuItems(navItems, "main")}
             </div>
 
-            {/* ===== TRA CỨU - TIỆN ÍCH ===== */}
-            <div>
+            <div className="">
               <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
+                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
+                  ? "lg:justify-center"
+                  : "justify-start"
+                  }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
                   "Tra cứu - Tiện ích"
@@ -504,15 +512,13 @@ const AppSidebar: React.FC = () => {
               {renderMenuItems(SearchItems, "others")}
             </div>
 
-            {/* ===== QUẢN TRỊ (chỉ Admin) ===== */}
             {user?.isAdmin && (
-              <div>
+              <div className="">
                 <h2
-                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                    !isExpanded && !isHovered
-                      ? "lg:justify-center"
-                      : "justify-start"
-                  }`}
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
+                    ? "lg:justify-center"
+                    : "justify-start"
+                    }`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? (
                     "Quản trị"
@@ -525,6 +531,7 @@ const AppSidebar: React.FC = () => {
             )}
           </div>
         </nav>
+        {/* {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null} */}
       </div>
     </aside>
   );
