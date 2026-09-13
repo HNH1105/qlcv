@@ -5,53 +5,54 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { kiemTraKhoa, tinhQuyenNoiDung, ghiLog } from "./helpers";
 
-// Người xử lý phải thuộc đúng phongXuLyId (điều chỉnh đã chốt với người dùng).
-export async function themNguoiXuLy(noiDungGiaoBanId: number, nhanVienId: string) {
+// THAY THẾ TOÀN BỘ danh sách người xử lý bằng danh sách mới trong 1 lần gọi duy nhất — dùng cho
+// modal "Sửa nội dung" với nút Lưu tường minh (KHÔNG tự lưu theo từng click chọn/bỏ chọn như
+// trước đây, vì đó chính là nguyên nhân gây lỗi khi nhấp ra ngoài dropdown: mỗi lần toggle bắn 1
+// request riêng, dễ chồng chéo/race giữa các request khi người dùng thao tác nhanh).
+export async function capNhatNguoiXuLy(noiDungGiaoBanId: number, nhanVienIds: string[]) {
   const session = await requireSession();
   const row = await prisma.noiDungGiaoBan.findUniqueOrThrow({
     where: { id: noiDungGiaoBanId },
-    include: { cuocHopGiaoBan: true },
+    include: { cuocHopGiaoBan: true, nguoiXuLys: true },
   });
   kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
 
   const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
-  if (!quyen.suaThongTin) throw new Error("Bạn không có quyền thêm chuyên viên xử lý.");
+  if (!quyen.suaNoiDung) throw new Error("Bạn không có quyền sửa người xử lý.");
 
-  const nv = await prisma.nhanVien.findUnique({ where: { maNV: nhanVienId } });
-  if (!nv || nv.maPhong !== row.phongXuLyId) {
-    throw new Error("Người xử lý phải thuộc đúng phòng xử lý đã chọn.");
+  const idsHopLe = Array.from(new Set(nhanVienIds));
+  if (idsHopLe.length > 0) {
+    const soDungPhong = await prisma.nhanVien.count({
+      where: { maNV: { in: idsHopLe }, maPhong: row.phongXuLyId },
+    });
+    if (soDungPhong !== idsHopLe.length) {
+      throw new Error("Người xử lý phải thuộc đúng phòng xử lý đã chọn.");
+    }
   }
 
+  const truoc = row.nguoiXuLys.map((x) => x.nhanVienId);
+  const themMoi = idsHopLe.filter((id) => !truoc.includes(id));
+  const boBot = truoc.filter((id) => !idsHopLe.includes(id));
+
+  if (themMoi.length === 0 && boBot.length === 0) return { daDoi: false as const };
+
   return prisma.$transaction(async (tx) => {
-    const created = await tx.noiDungGiaoBanNguoiXuLy.create({
-      data: { noiDungGiaoBanId, nhanVienId },
-    });
+    if (boBot.length > 0) {
+      await tx.noiDungGiaoBanNguoiXuLy.deleteMany({
+        where: { noiDungGiaoBanId, nhanVienId: { in: boBot } },
+      });
+    }
+    if (themMoi.length > 0) {
+      await tx.noiDungGiaoBanNguoiXuLy.createMany({
+        data: themMoi.map((maNV) => ({ noiDungGiaoBanId, nhanVienId: maNV })),
+      });
+    }
+    // Ghi 1 log tổng hợp duy nhất thay vì N log riêng lẻ cho từng người.
     await ghiLog(tx, noiDungGiaoBanId, session.maNV, "THEM_NGUOI_XU_LY", {
       truongDuocSua: "nguoiXuLy",
-      giaTriMoi: nhanVienId,
+      giaTriCu: truoc.join(", ") || "(trống)",
+      giaTriMoi: idsHopLe.join(", ") || "(trống)",
     });
-    return created;
-  });
-}
-
-export async function xoaNguoiXuLy(noiDungGiaoBanId: number, nhanVienId: string) {
-  const session = await requireSession();
-  const row = await prisma.noiDungGiaoBan.findUniqueOrThrow({
-    where: { id: noiDungGiaoBanId },
-    include: { cuocHopGiaoBan: true },
-  });
-  kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
-
-  const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
-  if (!quyen.suaThongTin) throw new Error("Bạn không có quyền xoá chuyên viên xử lý.");
-
-  return prisma.$transaction(async (tx) => {
-    await tx.noiDungGiaoBanNguoiXuLy.delete({
-      where: { noiDungGiaoBanId_nhanVienId: { noiDungGiaoBanId, nhanVienId } },
-    });
-    await ghiLog(tx, noiDungGiaoBanId, session.maNV, "XOA_NGUOI_XU_LY", {
-      truongDuocSua: "nguoiXuLy",
-      giaTriCu: nhanVienId,
-    });
+    return { daDoi: true as const };
   });
 }

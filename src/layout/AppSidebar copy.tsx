@@ -127,8 +127,8 @@ function getNavItems(isLanhDao: boolean): NavItem[] {
         { name: "Báo cáo", path: "/ca-nhan/bao-cao", pro: false },
         ...(isLanhDao
           ? [
-            { name: "Kế hoạch (Toàn bộ phòng)", path: "/ca-nhan/ke-hoach-toan-phong", pro: false },
-            { name: "Báo cáo (Toàn bộ phòng)", path: "/ca-nhan/bao-cao-toan-phong", pro: false },
+            { name: "Kế hoạch (Cả phòng)", path: "/ca-nhan/ke-hoach-toan-phong", pro: false },
+            { name: "Báo cáo (Cả phòng)", path: "/ca-nhan/bao-cao-toan-phong", pro: false },
           ]
           : []),
       ],
@@ -151,6 +151,13 @@ function getNavItems(isLanhDao: boolean): NavItem[] {
         { name: "Nhiệm vụ phòng", path: "/nhiem-vu/phong", pro: false },
         { name: "Nhiệm vụ thống kê", path: "/nhiem-vu/thong-ke", pro: false },
         { name: "Nhiệm vụ Tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
+      ],
+    },
+    {
+      icon: <GridIcon />,
+      name: "Check list Giao ban (Test)",
+      subItems: [
+          { name: "Danh sách giao ban tuần", path: "/giao-ban", pro: false },
       ],
     },
   ];

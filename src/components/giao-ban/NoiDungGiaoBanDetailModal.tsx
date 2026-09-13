@@ -20,33 +20,14 @@ import {
   boHoanThanh,
   deNghiChuyenTuan,
   huyKhongTheoDoi,
+  GiaoBanXungDotError,
 } from "@/lib/actions/giao-ban";
 import { tinhTrangThaiGiaoBan } from "@/lib/giao-ban/trang-thai";
+import { tinhQuyenClient } from "@/lib/giao-ban/quyen-client";
 import { TrangThaiGiaoBanBadge, UuTienGiaoBanBadge } from "./GiaoBanBadges";
 import NoiDungGiaoBanLichSu from "./NoiDungGiaoBanLichSu";
 import { MucDoUuTienGiaoBan } from "@prisma/client";
 import type { NoiDungGiaoBanRow } from "./GiaoBanTable";
-
-// Ánh xạ quyền PHÍA CLIENT — chỉ để ẩn/hiện nút, quyết định thật vẫn nằm ở giao-ban.ts (server).
-// Giữ đúng 4 điều chỉnh đã chốt: Admin (isAdmin) > LĐ đơn vị chỉ xem > LĐ/Chuyên viên phòng đúng
-// phòng xử lý.
-function tinhQuyenClient(
-  user: { isAdmin: boolean; quyen: string; maPhong: string } | null | undefined,
-  phongXuLyId: string
-) {
-  if (!user) return { xemDuoc: false, suaThongTin: false, capNhatGhiChuVaHoanThanh: false, laAdmin: false };
-  const isAdmin = user.isAdmin;
-  const cungPhong = user.maPhong === phongXuLyId;
-  const isLanhDaoPhong = !isAdmin && user.quyen === "LANHDAOPHONG" && cungPhong;
-  const isChuyenVien = !isAdmin && user.quyen === "USER" && cungPhong;
-  const laLanhDaoDonVi = !isAdmin && user.quyen === "LANHDAODONVI";
-  return {
-    laAdmin: isAdmin,
-    xemDuoc: isAdmin || laLanhDaoDonVi || cungPhong,
-    suaThongTin: isAdmin || isLanhDaoPhong,
-    capNhatGhiChuVaHoanThanh: isAdmin || isLanhDaoPhong || isChuyenVien,
-  };
-}
 
 const UU_TIEN_OPTIONS: { value: MucDoUuTienGiaoBan; label: string }[] = [
   { value: "CAO", label: "Cao" },
@@ -59,12 +40,14 @@ export default function NoiDungGiaoBanDetailModal({
   onClose,
   row,
   cuocHopDangMo,
+  initialAction,
   onChanged,
 }: {
   isOpen: boolean;
   onClose: () => void;
   row: NoiDungGiaoBanRow | null;
   cuocHopDangMo: boolean;
+  initialAction?: "sua" | "chuyen-tuan" | "huy";
   onChanged: () => void;
 }) {
   const user = useAuth();
@@ -113,6 +96,11 @@ export default function NoiDungGiaoBanDetailModal({
     setLyDoHuy("");
     setHienLichSu(false);
     getNhanVienList().then(setNhanVienList);
+    // Mở sẵn đúng thao tác khi bấm từ menu "..." trên bảng, thay vì luôn mở ở chế độ xem.
+    if (initialAction === "sua") setDangSua(true);
+    if (initialAction === "chuyen-tuan") setConfirmChuyenTuan(true);
+    if (initialAction === "huy") setDangNhapHuy(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, row]);
 
   const nguoiXuLyOptions = useMemo(
@@ -182,7 +170,13 @@ export default function NoiDungGiaoBanDetailModal({
       onChanged();
       onClose();
     } catch (e) {
-      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      if (e instanceof GiaoBanXungDotError) {
+        show("error", "Đã có người khác cập nhật", e.message);
+        onChanged();
+        onClose();
+      } else {
+        show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      }
     } finally {
       setIsActing(false);
     }
@@ -195,7 +189,12 @@ export default function NoiDungGiaoBanDetailModal({
       show("success", "Đã cập nhật", "Đã bỏ đánh dấu hoàn thành");
       onChanged();
     } catch (e) {
-      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      if (e instanceof GiaoBanXungDotError) {
+        show("error", "Đã có người khác cập nhật", e.message);
+        onChanged();
+      } else {
+        show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      }
     } finally {
       setIsActing(false);
       setConfirmBoHoanThanh(false);
@@ -328,10 +327,10 @@ export default function NoiDungGiaoBanDetailModal({
           <input
             value={ghiChu}
             onChange={(e) => setGhiChu(e.target.value)}
-            disabled={!quyen.capNhatGhiChuVaHoanThanh || khoaNghiepVu}
+            disabled={!quyen.suaGhiChu || khoaNghiepVu}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm disabled:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
-          {quyen.capNhatGhiChuVaHoanThanh && !khoaNghiepVu && (
+          {quyen.suaGhiChu && !khoaNghiepVu && (
             <Button size="sm" variant="outline" onClick={luuGhiChu} disabled={isSaving}>Lưu</Button>
           )}
         </div>
@@ -345,7 +344,7 @@ export default function NoiDungGiaoBanDetailModal({
       )}
 
       {/* ===== Hành động nghiệp vụ ===== */}
-      {!khoaNghiepVu && (quyen.capNhatGhiChuVaHoanThanh || quyen.suaThongTin) && (
+      {!khoaNghiepVu && (quyen.danhDauHoanThanh || quyen.suaThongTin) && (
         <div className="mt-5 space-y-3 border-t border-gray-100 pt-4 dark:border-white/[0.05]">
           {dangNhapHoanThanh ? (
             <div className="space-y-2 rounded-lg bg-success-50 p-3 dark:bg-success-500/10">
@@ -381,7 +380,7 @@ export default function NoiDungGiaoBanDetailModal({
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {quyen.capNhatGhiChuVaHoanThanh && !row.daHoanThanh && (
+              {quyen.danhDauHoanThanh && !row.daHoanThanh && (
                 <button
                   onClick={() => setDangNhapHoanThanh(true)}
                   className="rounded-lg bg-success-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-success-600"
@@ -389,7 +388,7 @@ export default function NoiDungGiaoBanDetailModal({
                   ✓ Đánh dấu hoàn thành
                 </button>
               )}
-              {quyen.capNhatGhiChuVaHoanThanh && row.daHoanThanh && (
+              {quyen.danhDauHoanThanh && row.daHoanThanh && (
                 <button
                   onClick={() => setConfirmBoHoanThanh(true)}
                   className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/5 dark:text-gray-300"

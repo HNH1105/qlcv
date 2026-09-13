@@ -13,10 +13,10 @@ export async function huyKhongTheoDoi(id: number, lyDo?: string) {
   });
   kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
 
-  // "Theo quyền được cấp" cho LĐ phòng (mục 13) — hiện chốt bằng suaThongTin (Admin/LĐ phòng đúng
-  // phòng). Nếu sau này cần tách quyền huỷ riêng khỏi sửa thông tin, thêm field riêng ở helpers.ts.
+  // Dùng đúng quyền loaiKhoiDanhSach (Admin/LĐ phòng đúng phòng) — tách riêng khỏi suaNoiDung để
+  // rõ ràng theo yêu cầu "đừng gộp chung", dù điều kiện tính hiện đang giống nhau.
   const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
-  if (!quyen.suaThongTin) throw new Error("Bạn không có quyền hủy/không theo dõi nội dung này.");
+  if (!quyen.loaiKhoiDanhSach) throw new Error("Bạn không có quyền hủy/không theo dõi nội dung này.");
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.noiDungGiaoBan.update({

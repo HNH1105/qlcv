@@ -14,7 +14,7 @@ export async function deNghiChuyenTuan(id: number) {
   kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
 
   const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
-  if (!quyen.suaThongTin) throw new Error("Bạn không có quyền đề nghị chuyển tuần.");
+  if (!quyen.chuyenTuanSau) throw new Error("Bạn không có quyền đề nghị chuyển tuần.");
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.noiDungGiaoBan.update({
