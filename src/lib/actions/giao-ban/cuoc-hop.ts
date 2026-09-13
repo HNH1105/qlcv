@@ -15,6 +15,52 @@ export async function getCuocHopGiaoBanList() {
   });
 }
 
+// Danh sách dạng bảng có phân trang cho trang /giao-ban — sắp mới tạo lên trước (createdAt desc),
+// kèm Tiến độ % (đã hoàn thành / tổng số nội dung, tính bằng groupBy để tránh N+1 query).
+export async function getCuocHopGiaoBanListPhanTrang(input: { trang: number; soDongMoiTrang: number }) {
+  await requireSession();
+  const { trang, soDongMoiTrang } = input;
+
+  const [tongSo, items] = await Promise.all([
+    prisma.cuocHopGiaoBan.count(),
+    prisma.cuocHopGiaoBan.findMany({
+      orderBy: { createdAt: "desc" },
+      skip: (trang - 1) * soDongMoiTrang,
+      take: soDongMoiTrang,
+      include: { createdBy: { select: { hoTen: true } } },
+    }),
+  ]);
+
+  const ids = items.map((c) => c.id);
+  const nhom = ids.length
+    ? await prisma.noiDungGiaoBan.groupBy({
+        by: ["cuocHopGiaoBanId", "daHoanThanh"],
+        where: { cuocHopGiaoBanId: { in: ids }, isDeleted: false },
+        _count: true,
+      })
+    : [];
+
+  const tienDoMap = new Map<number, { tong: number; daHoanThanh: number }>();
+  for (const n of nhom) {
+    const cur = tienDoMap.get(n.cuocHopGiaoBanId) ?? { tong: 0, daHoanThanh: 0 };
+    cur.tong += n._count;
+    if (n.daHoanThanh) cur.daHoanThanh += n._count;
+    tienDoMap.set(n.cuocHopGiaoBanId, cur);
+  }
+
+  const rows = items.map((c) => {
+    const td = tienDoMap.get(c.id) ?? { tong: 0, daHoanThanh: 0 };
+    return {
+      ...c,
+      tongNoiDung: td.tong,
+      soDaHoanThanh: td.daHoanThanh,
+      tienDoPhanTram: td.tong === 0 ? 0 : Math.round((td.daHoanThanh / td.tong) * 100),
+    };
+  });
+
+  return { rows, tongSo };
+}
+
 // Tạo cuộc họp tuần mới — chỉ Admin.
 export async function taoCuocHopGiaoBan(nam: number, tuan: number, ngayHop: Date) {
   const session = await requireSession();

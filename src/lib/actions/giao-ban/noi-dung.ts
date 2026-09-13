@@ -11,17 +11,14 @@ import { kiemTraKhoa, tinhQuyenNoiDung, isAdminHoacLanhDaoPhong, ghiLog } from "
 // ============================================================================================
 
 export async function getCuocHopGiaoBanChiTiet(id: number) {
-  const session = await requireSession();
+  await requireSession();
 
   const cuocHop = await prisma.cuocHopGiaoBan.findUniqueOrThrow({ where: { id } });
-  const xemToanBo = session.isAdmin || session.quyen === "LANHDAODONVI";
 
+  // SỬA: mọi người (kể cả chuyên viên) đều xem TOÀN BỘ checklist — không lọc theo phòng nữa.
+  // Phân quyền thật sự nằm ở HÀNH ĐỘNG (sửa/hoàn thành), xem chi tiết ở helpers.ts.
   const rows = await prisma.noiDungGiaoBan.findMany({
-    where: {
-      cuocHopGiaoBanId: id,
-      isDeleted: false,
-      ...(xemToanBo ? {} : { phongXuLyId: session.maPhong }),
-    },
+    where: { cuocHopGiaoBanId: id, isDeleted: false },
     orderBy: { id: "asc" },
     include: {
       phongXuLy: { select: { maPhong: true, tenPhong: true } },
@@ -44,7 +41,6 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
 
   return {
     cuocHop,
-    xemToanBo,
     rows,
     thongKe: {
       tong,
@@ -112,19 +108,15 @@ export async function themNoiDungTrucTiep(input: {
 }
 
 // ============================================================================================
-// CẬP NHẬT NỘI DUNG — mỗi field sửa ghi 1 log riêng (mục 29). Chỉ nhận field nào thực sự được
-// truyền lên (partial update).
+// SỬA NỘI DUNG — Nội dung / Hạn hoàn thành / Mức độ ưu tiên (KHÔNG gồm ghi chú — xem
+// capNhatGhiChuGiaoBan riêng, và KHÔNG gồm người xử lý — xem capNhatNguoiXuLy() ở nguoi-xu-ly.ts).
+// Tách hẳn 3 hành động thành 3 action riêng theo đúng yêu cầu "đừng gộp chung", mỗi cái ứng với 1
+// modal riêng ở giao diện.
 // ============================================================================================
 
-export async function capNhatNoiDungGiaoBan(
+export async function suaNoiDungGiaoBan(
   id: number,
-  patch: {
-    noiDung?: string;
-    phongXuLyId?: string;
-    hanHoanThanh?: Date;
-    mucDoUuTien?: MucDoUuTienGiaoBan;
-    ghiChu?: string | null;
-  }
+  patch: { noiDung: string; hanHoanThanh: Date; mucDoUuTien: MucDoUuTienGiaoBan; phongXuLyId?: string }
 ) {
   const session = await requireSession();
 
@@ -135,17 +127,7 @@ export async function capNhatNoiDungGiaoBan(
   kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
 
   const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
-  const chiSuaGhiChu =
-    patch.noiDung === undefined &&
-    patch.phongXuLyId === undefined &&
-    patch.hanHoanThanh === undefined &&
-    patch.mucDoUuTien === undefined;
-
-  if (chiSuaGhiChu) {
-    if (!quyen.capNhatGhiChuVaHoanThanh) throw new Error("Bạn không có quyền cập nhật ghi chú.");
-  } else if (!quyen.suaThongTin) {
-    throw new Error("Bạn không có quyền sửa thông tin nội dung này.");
-  }
+  if (!quyen.suaNoiDung) throw new Error("Bạn không có quyền sửa nội dung này.");
 
   if (patch.phongXuLyId && patch.phongXuLyId !== row.phongXuLyId) {
     if (!isAdminHoacLanhDaoPhong(session, patch.phongXuLyId)) {
@@ -154,51 +136,63 @@ export async function capNhatNoiDungGiaoBan(
   }
 
   return prisma.$transaction(async (tx) => {
-    const data: Prisma.NoiDungGiaoBanUpdateInput = {};
-    if (patch.noiDung !== undefined) data.noiDung = patch.noiDung;
+    const data: Prisma.NoiDungGiaoBanUpdateInput = {
+      noiDung: patch.noiDung,
+      hanHoanThanh: patch.hanHoanThanh,
+      mucDoUuTien: patch.mucDoUuTien,
+    };
     if (patch.phongXuLyId !== undefined) data.phongXuLy = { connect: { maPhong: patch.phongXuLyId } };
-    if (patch.hanHoanThanh !== undefined) data.hanHoanThanh = patch.hanHoanThanh;
-    if (patch.mucDoUuTien !== undefined) data.mucDoUuTien = patch.mucDoUuTien;
-    if (patch.ghiChu !== undefined) data.ghiChu = patch.ghiChu;
 
     const updated = await tx.noiDungGiaoBan.update({ where: { id }, data });
 
-    if (patch.noiDung !== undefined && patch.noiDung !== row.noiDung) {
+    if (patch.noiDung !== row.noiDung) {
       await ghiLog(tx, id, session.maNV, "CAP_NHAT_NOI_DUNG", {
-        truongDuocSua: "noiDung",
-        giaTriCu: row.noiDung,
-        giaTriMoi: patch.noiDung,
+        truongDuocSua: "noiDung", giaTriCu: row.noiDung, giaTriMoi: patch.noiDung,
       });
     }
     if (patch.phongXuLyId !== undefined && patch.phongXuLyId !== row.phongXuLyId) {
       await ghiLog(tx, id, session.maNV, "SUA_PHONG_XU_LY", {
-        truongDuocSua: "phongXuLyId",
-        giaTriCu: row.phongXuLyId,
-        giaTriMoi: patch.phongXuLyId,
+        truongDuocSua: "phongXuLyId", giaTriCu: row.phongXuLyId, giaTriMoi: patch.phongXuLyId,
       });
     }
-    if (patch.hanHoanThanh !== undefined && patch.hanHoanThanh.getTime() !== row.hanHoanThanh.getTime()) {
+    if (patch.hanHoanThanh.getTime() !== row.hanHoanThanh.getTime()) {
       await ghiLog(tx, id, session.maNV, "SUA_HAN_HOAN_THANH", {
-        truongDuocSua: "hanHoanThanh",
-        giaTriCu: row.hanHoanThanh.toISOString(),
-        giaTriMoi: patch.hanHoanThanh.toISOString(),
+        truongDuocSua: "hanHoanThanh", giaTriCu: row.hanHoanThanh.toISOString(), giaTriMoi: patch.hanHoanThanh.toISOString(),
       });
     }
-    if (patch.mucDoUuTien !== undefined && patch.mucDoUuTien !== row.mucDoUuTien) {
+    if (patch.mucDoUuTien !== row.mucDoUuTien) {
       await ghiLog(tx, id, session.maNV, "SUA_MUC_DO_UU_TIEN", {
-        truongDuocSua: "mucDoUuTien",
-        giaTriCu: row.mucDoUuTien,
-        giaTriMoi: patch.mucDoUuTien,
-      });
-    }
-    if (patch.ghiChu !== undefined && patch.ghiChu !== row.ghiChu) {
-      await ghiLog(tx, id, session.maNV, "CAP_NHAT_GHI_CHU", {
-        truongDuocSua: "ghiChu",
-        giaTriCu: row.ghiChu,
-        giaTriMoi: patch.ghiChu,
+        truongDuocSua: "mucDoUuTien", giaTriCu: row.mucDoUuTien, giaTriMoi: patch.mucDoUuTien,
       });
     }
 
+    return updated;
+  });
+}
+
+// ============================================================================================
+// CẬP NHẬT GHI CHÚ — riêng biệt, Admin/LĐ phòng/Chuyên viên đúng phòng đều dùng được.
+// ============================================================================================
+
+export async function capNhatGhiChuGiaoBan(id: number, ghiChu: string | null) {
+  const session = await requireSession();
+
+  const row = await prisma.noiDungGiaoBan.findUniqueOrThrow({
+    where: { id },
+    include: { cuocHopGiaoBan: true },
+  });
+  kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
+
+  const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
+  if (!quyen.capNhatGhiChu) throw new Error("Bạn không có quyền cập nhật ghi chú.");
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.noiDungGiaoBan.update({ where: { id }, data: { ghiChu } });
+    if (ghiChu !== row.ghiChu) {
+      await ghiLog(tx, id, session.maNV, "CAP_NHAT_GHI_CHU", {
+        truongDuocSua: "ghiChu", giaTriCu: row.ghiChu, giaTriMoi: ghiChu,
+      });
+    }
     return updated;
   });
 }

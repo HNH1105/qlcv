@@ -124,12 +124,12 @@ function getNavItems(quyen?: string): NavItem[] {
         ...(isLanhDao
           ? [
               {
-                name: "Kế hoạch (Toàn bộ phòng)",
+                name: "Kế hoạch (Cả phòng)",
                 path: "/ca-nhan/ke-hoach-toan-phong",
                 pro: false,
               },
               {
-                name: "Báo cáo (Toàn bộ phòng)",
+                name: "Báo cáo (Cả phòng)",
                 path: "/ca-nhan/bao-cao-toan-phong",
                 pro: false,
               },
@@ -156,18 +156,25 @@ function getNavItems(quyen?: string): NavItem[] {
         // Chỉ Lãnh đạo mới được tạo mới & xem đã giao
         ...(isLanhDao
           ? [
-              { name: "Nhiệm vụ tạo mới", path: "/nhiem-vu/tao-moi", pro: false },
-              { name: "Nhiệm vụ đã giao", path: "/nhiem-vu/toi-giao", pro: false },
+              { name: "Thêm mới", path: "/nhiem-vu/tao-moi", pro: false },
+              { name: "Đã giao", path: "/nhiem-vu/toi-giao", pro: false },
+              { name: "Của phòng", path: "/nhiem-vu/phong", pro: false },
             ]
           : []),
 
         // Các mục còn lại ai cũng thấy
-        { name: "Nhiệm vụ của tôi", path: "/nhiem-vu", pro: false },
-        { name: "Nhiệm vụ phòng", path: "/nhiem-vu/phong", pro: false },
-        { name: "Nhiệm vụ thống kê", path: "/nhiem-vu/thong-ke", pro: false },
-        { name: "Nhiệm vụ tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
+        { name: "Chờ xử lý", path: "/nhiem-vu", pro: false },
+        { name: "Thống kê", path: "/nhiem-vu/thong-ke", pro: false },
+        { name: "Tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
       ],
     },
+    {
+          icon: <GridIcon />,
+          name: "Check list Giao ban (Test)",
+          subItems: [
+              { name: "Danh sách giao ban tuần", path: "/giao-ban", pro: false },
+          ],
+        },
   ];
 }
 // ==========================================================================================

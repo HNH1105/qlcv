@@ -30,11 +30,13 @@ export default function AddNoiDungGiaoBanModal({
   isOpen,
   onClose,
   cuocHopGiaoBanId,
+  hanMacDinh,
   onAdded,
 }: {
   isOpen: boolean;
   onClose: () => void;
   cuocHopGiaoBanId: number;
+  hanMacDinh: string; // yyyy-mm-dd — ngày cuối tuần của cuộc họp, dùng làm hạn mặc định
   onAdded: () => void;
 }) {
   const user = useAuth();
@@ -44,11 +46,12 @@ export default function AddNoiDungGiaoBanModal({
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
 
   const [noiDung, setNoiDung] = useState("");
-  // Admin/LĐ đơn vị chọn tự do; LĐ phòng mặc định đúng phòng mình (khớp quyền "suaThongTin").
+  // Admin/LĐ đơn vị chọn tự do; LĐ phòng mặc định đúng phòng mình (khớp quyền "suaNoiDung").
   const [phongXuLyId, setPhongXuLyId] = useState("");
   const [hanHoanThanh, setHanHoanThanh] = useState("");
   const [dateKey, setDateKey] = useState(0);
-  const [mucDoUuTien, setMucDoUuTien] = useState<MucDoUuTienGiaoBan>("TRUNGBINH");
+  // Mặc định: hạn = ngày cuối tuần của cuộc họp, mức độ ưu tiên = Cao (theo yêu cầu mới).
+  const [mucDoUuTien, setMucDoUuTien] = useState<MucDoUuTienGiaoBan>("CAO");
   const [ghiChu, setGhiChu] = useState("");
   const [selectedNguoiXuLy, setSelectedNguoiXuLy] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,14 +63,14 @@ export default function AddNoiDungGiaoBanModal({
     getNhanVienList().then(setNhanVienList);
     setNoiDung("");
     setPhongXuLyId(user?.quyen === "LANHDAOPHONG" ? user.maPhong : "");
-    setHanHoanThanh("");
+    setHanHoanThanh(hanMacDinh);
     setDateKey((k) => k + 1);
-    setMucDoUuTien("TRUNGBINH");
+    setMucDoUuTien("CAO");
     setGhiChu("");
     setSelectedNguoiXuLy([]);
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, hanMacDinh]);
 
   // Người xử lý CHỈ được chọn trong đúng phòng xử lý đã chọn ở trên (điều chỉnh đã chốt) — đổi
   // phòng thì reset lại danh sách đã chọn để không giữ người sai phòng.

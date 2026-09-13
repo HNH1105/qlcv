@@ -6,33 +6,48 @@
 
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/auth/session";
-import { TrangThaiCuocHopGiaoBan, HanhDongGiaoBan, Prisma } from "@prisma/client";
+import { TrangThaiCuocHopGiaoBan, HanhDongGiaoBan } from "@prisma/client";
+
+// Kiểu tx bên trong prisma.$transaction(async (tx) => {...}) — SUY RA TỰ ĐỘNG từ chính `prisma`
+// đang dùng, KHÔNG gõ tay "Prisma.TransactionClient". Lý do: prisma ở đây đã qua .$extends()
+// (soft-delete filter, xem src/lib/prisma.ts) nên tx thật sự có kiểu MỞ RỘNG khác với
+// Prisma.TransactionClient gốc — gõ tay kiểu gốc sẽ lệch kiểu và gây lỗi TypeScript lúc build
+// (đúng lỗi bạn từng gặp và tự sửa). Suy ra qua Parameters<...> luôn khớp 100% dù prisma.ts có
+// extend thêm gì sau này.
+export type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 // ============================================================================================
-// PHÂN QUYỀN — đúng bảng mục 13 đặc tả + 4 điều chỉnh đã chốt:
+// PHÂN QUYỀN — 7 chức năng tách riêng, KHÔNG gộp chung:
+//   - Xem chi tiết, Xem lịch sử: TẤT CẢ mọi người, không điều kiện gì thêm.
+//   - suaNoiDung (Nội dung/Hạn/Ưu tiên/Người xử lý), chuyenTuanSau, loaiKhoiDanhSach (huỷ):
+//     CHỈ Admin hoặc LĐ phòng ĐÚNG phòng xử lý.
+//   - capNhatGhiChu, danhDauHoanThanh: Admin, LĐ phòng, VÀ CHUYÊN VIÊN — chuyên viên CHỈ có 2
+//     quyền này, không có 3 quyền còn lại. Tất cả đều phải ĐÚNG phòng xử lý.
 //   - "Admin/Lãnh đạo hệ thống" CHỈ xác định bằng TaiKhoan.isAdmin, KHÔNG dùng quyen=LANHDAODONVI.
-//   - LANHDAODONVI (isAdmin=false): XEM TOÀN BỘ (không cần cùng phòng), nhưng KHÔNG sửa/hoàn
-//     thành/hủy/chuyển tuần — thuần xem, không tính là "1 phòng" trong bảng quyền.
-//   - Lãnh đạo/Chuyên viên phòng xử lý: phải CÙNG phongXuLyId với nội dung.
+//   - XEM checklist (không nằm trong QuyenNoiDung): TẤT CẢ mọi người xem TOÀN BỘ, không lọc phòng.
 // ============================================================================================
 
 export type QuyenNoiDung = {
-  xemDuoc: boolean;
-  suaThongTin: boolean; // sửa nội dung/phòng xử lý/thêm-xoá chuyên viên/hạn/ưu tiên/đề nghị chuyển tuần/huỷ
-  capNhatGhiChuVaHoanThanh: boolean; // cập nhật ghi chú + đánh dấu (bỏ) hoàn thành
+  suaNoiDung: boolean; // Nội dung / Hạn hoàn thành / Mức độ ưu tiên / Người xử lý
+  capNhatGhiChu: boolean;
+  danhDauHoanThanh: boolean;
+  chuyenTuanSau: boolean;
+  loaiKhoiDanhSach: boolean; // huỷ / không theo dõi
 };
 
 export function tinhQuyenNoiDung(session: SessionPayload, phongXuLyId: string): QuyenNoiDung {
   const isAdmin = session.isAdmin;
-  const laLanhDaoDonVi = !isAdmin && session.quyen === "LANHDAODONVI";
   const cungPhong = session.maPhong === phongXuLyId;
   const isLanhDaoPhong = !isAdmin && session.quyen === "LANHDAOPHONG" && cungPhong;
   const isChuyenVien = !isAdmin && session.quyen === "USER" && cungPhong;
+  const laLanhDaoHoacAdmin = isAdmin || isLanhDaoPhong;
 
   return {
-    xemDuoc: isAdmin || laLanhDaoDonVi || cungPhong,
-    suaThongTin: isAdmin || isLanhDaoPhong,
-    capNhatGhiChuVaHoanThanh: isAdmin || isLanhDaoPhong || isChuyenVien,
+    suaNoiDung: laLanhDaoHoacAdmin,
+    chuyenTuanSau: laLanhDaoHoacAdmin,
+    loaiKhoiDanhSach: laLanhDaoHoacAdmin,
+    capNhatGhiChu: laLanhDaoHoacAdmin || isChuyenVien,
+    danhDauHoanThanh: laLanhDaoHoacAdmin || isChuyenVien,
   };
 }
 
@@ -58,7 +73,7 @@ export function kiemTraKhoa(cuocHopTrangThai: TrangThaiCuocHopGiaoBan, daKetThuc
 // ============================================================================================
 
 export async function ghiLog(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   noiDungGiaoBanId: number,
   nguoiThucHienId: string,
   thaoTac: HanhDongGiaoBan,
