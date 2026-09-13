@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/auth/session";
 import { TrangThaiCuocHopGiaoBan, HanhDongGiaoBan, Prisma } from "@prisma/client";
 
+import type { PrismaTx } from "@/lib/prisma";
 // ============================================================================================
 // PHÂN QUYỀN — 7 chức năng tách riêng, KHÔNG gộp chung:
 //   - Xem chi tiết, Xem lịch sử: TẤT CẢ mọi người, không điều kiện gì thêm.
@@ -65,7 +66,7 @@ export function kiemTraKhoa(cuocHopTrangThai: TrangThaiCuocHopGiaoBan, daKetThuc
 // ============================================================================================
 
 export async function ghiLog(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   noiDungGiaoBanId: number,
   nguoiThucHienId: string,
   thaoTac: HanhDongGiaoBan,
