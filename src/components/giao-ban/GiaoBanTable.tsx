@@ -62,7 +62,7 @@ export default function GiaoBanTable({
                 <TableCell isHeader className="w-28 px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Chuyên viên</TableCell>
                 <TableCell isHeader className="w-28 px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Hạn</TableCell>
                 <TableCell isHeader className="w-24 px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Ưu tiên</TableCell>
-                <TableCell isHeader className="w-10 px-2 py-3" />
+                <TableCell isHeader className="w-10 px-2 py-3">{null}</TableCell>
               </TableRow>
             </TableHeader>
 

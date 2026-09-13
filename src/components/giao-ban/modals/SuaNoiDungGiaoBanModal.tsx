@@ -58,6 +58,9 @@ export default function SuaNoiDungGiaoBanModal({
   if (!row) return null;
 
   async function handleLuu() {
+    if (!row) return; // giúp TypeScript tự thu hẹp kiểu ngay trong closure này — check ở ngoài
+    // (dòng "if (!row) return null;" phía trên) không tự áp dụng được vào bên trong hàm lồng vì
+    // đây là 1 closure, TS không đảm bảo `row` còn non-null tại thời điểm hàm này được gọi.
     if (!noiDung.trim()) return show("error", "Thiếu nội dung", "Vui lòng nhập nội dung.");
     if (!hanHoanThanh) return show("error", "Thiếu hạn", "Vui lòng chọn hạn hoàn thành.");
 

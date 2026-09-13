@@ -6,9 +6,16 @@
 
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/auth/session";
-import { TrangThaiCuocHopGiaoBan, HanhDongGiaoBan, Prisma } from "@prisma/client";
+import { TrangThaiCuocHopGiaoBan, HanhDongGiaoBan } from "@prisma/client";
 
-import type { PrismaTx } from "@/lib/prisma";
+// Kiểu tx bên trong prisma.$transaction(async (tx) => {...}) — SUY RA TỰ ĐỘNG từ chính `prisma`
+// đang dùng, KHÔNG gõ tay "Prisma.TransactionClient". Lý do: prisma ở đây đã qua .$extends()
+// (soft-delete filter, xem src/lib/prisma.ts) nên tx thật sự có kiểu MỞ RỘNG khác với
+// Prisma.TransactionClient gốc — gõ tay kiểu gốc sẽ lệch kiểu và gây lỗi TypeScript lúc build
+// (đúng lỗi bạn từng gặp và tự sửa). Suy ra qua Parameters<...> luôn khớp 100% dù prisma.ts có
+// extend thêm gì sau này.
+export type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 // ============================================================================================
 // PHÂN QUYỀN — 7 chức năng tách riêng, KHÔNG gộp chung:
 //   - Xem chi tiết, Xem lịch sử: TẤT CẢ mọi người, không điều kiện gì thêm.
