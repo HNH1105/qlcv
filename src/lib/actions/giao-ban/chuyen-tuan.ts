@@ -65,7 +65,10 @@ export async function xacNhanChuyenTuan(noiDungCuId: number, cuocHopGiaoBanMoiId
 
     await tx.noiDungGiaoBan.update({
       where: { id: cuCu.id },
-      data: { daKetThuc: true, deNghiChuyenTuan: false },
+      // Theo yêu cầu: bản ghi tuần CŨ tự động ghi rõ "Chuyển tuần" vào Ghi chú (hiển thị màu đỏ ở
+      // UI) để phân biệt trực quan với "Loại bỏ" — nhưng vẫn tính vào tỷ lệ % là "chưa hoàn thành"
+      // vì daHoanThanh vẫn giữ false, không đổi.
+      data: { daKetThuc: true, deNghiChuyenTuan: false, ghiChu: "Chuyển tuần" },
     });
 
     await ghiLog(tx, moi.id, session.maNV, "XAC_NHAN_CHUYEN_TUAN", {

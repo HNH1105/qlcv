@@ -1,21 +1,24 @@
 // ĐÍCH: src/components/giao-ban/GiaoBanChecklistBoard.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useModal } from "@/hooks/useModal";
 import ToastProvider, { useToast } from "@/components/ca-nhan/ToastProvider";
 import ConfirmDialog from "@/components/ca-nhan/ConfirmDialog";
 import { formatDateVN, getWeekDateRangeLabel, getISOWeekEnd } from "@/lib/week";
 import { getPhongList } from "@/lib/actions/danh-muc";
+import { loiThanThien, rutGonNoiDung } from "@/lib/giao-ban/loi-than-thien";
 import {
   getCuocHopGiaoBanChiTiet,
   chotCuocHopGiaoBan,
-  hoanThanhNoiDung,
-  boHoanThanh,
+  moLaiCuocHopGiaoBan,
+  capNhatHoanThanhHangLoat,
   deNghiChuyenTuan,
+  khoiPhucNoiDungGiaoBan,
 } from "@/lib/actions/giao-ban";
 import GiaoBanTable, { type NoiDungGiaoBanRow, type HanhDongHang } from "./GiaoBanTable";
+import LoaiBoTable from "./LoaiBoTable";
 import AddNoiDungGiaoBanModal from "./AddNoiDungGiaoBanModal";
 import ImportGiaoBanExcelModal from "./ImportGiaoBanExcelModal";
 import ThongKeGiaoBanModal from "./ThongKeGiaoBanModal";
@@ -26,8 +29,10 @@ import LichSuNoiDungModal from "./modals/LichSuNoiDungModal";
 import LoaiKhoiDanhSachModal from "./modals/LoaiKhoiDanhSachModal";
 
 type ChiTiet = Awaited<ReturnType<typeof getCuocHopGiaoBanChiTiet>>;
-type TabTrangThai = "TAT_CA" | "CHUA_XU_LY" | "DA_XU_LY";
+type TabTrangThai = "TAT_CA" | "CHUA_XU_LY" | "DA_XU_LY" | "LOAI_BO";
 type Phong = { maPhong: string; tenPhong: string };
+
+const DEBOUNCE_MS = 700;
 
 export default function GiaoBanChecklistBoard({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
   return (
@@ -48,10 +53,21 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
   const [dsPhong, setDsPhong] = useState<Phong[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState<TabTrangThai>("TAT_CA");
-  const [locPhong, setLocPhong] = useState(""); // "" = tất cả phòng
-  const [dangCheck, setDangCheck] = useState<number | null>(null);
+  const [locPhong, setLocPhong] = useState("");
 
-  // Mỗi hành động ứng đúng 1 modal riêng — KHÔNG gộp chung 1 modal to như trước.
+  // ===== Checkbox optimistic + debounce gộp batch =====
+  // overrides: giá trị daHoanThanh NGƯỜI DÙNG ĐANG THẤY (đã ghi đè lên dữ liệu server), phản ánh
+  // NGAY khi click — không chờ API. pendingRef: tập id CẦN GỬI lên server ở lượt debounce kế tiếp,
+  // tách khỏi overrides để có thể "check rồi bỏ check lại về ban đầu -> không cần gửi API" (khi giá
+  // trị optimistic trùng lại đúng giá trị server, tự xoá khỏi pending mà KHÔNG xoá khỏi overrides
+  // — vì overrides khi đó == giá trị gốc nên hiển thị vẫn đúng).
+  const [overrides, setOverrides] = useState<Record<number, boolean>>({});
+  const [dangGuiIds, setDangGuiIds] = useState<Set<number>>(new Set());
+  const pendingRef = useRef<Record<number, boolean>>({});
+  const isSendingRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowsRef = useRef<NoiDungGiaoBanRow[]>([]); // luôn giữ bản rows mới nhất để tra cứu nội dung khi báo lỗi
+
   const [rowChiTiet, setRowChiTiet] = useState<NoiDungGiaoBanRow | null>(null);
   const [rowSua, setRowSua] = useState<NoiDungGiaoBanRow | null>(null);
   const [rowGhiChu, setRowGhiChu] = useState<NoiDungGiaoBanRow | null>(null);
@@ -59,19 +75,21 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
   const [rowHuy, setRowHuy] = useState<NoiDungGiaoBanRow | null>(null);
   const [rowChuyenTuan, setRowChuyenTuan] = useState<NoiDungGiaoBanRow | null>(null);
   const [dangChuyenTuan, setDangChuyenTuan] = useState(false);
+  const [dangKhoiPhucId, setDangKhoiPhucId] = useState<number | null>(null);
 
   const [confirmChot, setConfirmChot] = useState(false);
   const [isChotting, setIsChotting] = useState(false);
+  const [dangMoLai, setDangMoLai] = useState(false);
 
-  // reload({silent}) — mặc định KHÔNG bật lại spinner toàn trang, chỉ dùng khi thao tác nhỏ (check
-  // hoàn thành, sửa 1 dòng...) để cảm giác giống cập nhật ngầm (AJAX), không giật cả trang mỗi lần
-  // bấm. Chỉ lần tải đầu tiên mới hiện spinner full.
   const reload = useCallback(
     (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setIsLoading(true);
-      getCuocHopGiaoBanChiTiet(cuocHopGiaoBanId)
-        .then((d) => setData(d as ChiTiet))
-        .catch((e) => show("error", "Không tải được dữ liệu", e instanceof Error ? e.message : "Có lỗi xảy ra"))
+      return getCuocHopGiaoBanChiTiet(cuocHopGiaoBanId)
+        .then((d) => {
+          setData(d as ChiTiet);
+          rowsRef.current = d.rows as NoiDungGiaoBanRow[];
+        })
+        .catch((e) => show("error", "Không tải được dữ liệu", loiThanThien(e)))
         .finally(() => setIsLoading(false));
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
@@ -81,39 +99,143 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
   useEffect(() => {
     reload();
     getPhongList().then(setDsPhong);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
   }, [reload]);
 
-  const rows = (data?.rows as NoiDungGiaoBanRow[] | undefined) ?? [];
+  const rowsGoc = (data?.rows as NoiDungGiaoBanRow[] | undefined) ?? [];
+
+  // Áp overrides lên rows gốc — mọi nơi khác trong component (bảng, tab đếm số, tỷ lệ) đều dùng
+  // MẢNG NÀY thay vì rowsGoc, để hiển thị optimistic nhất quán khắp nơi.
+  //
+  // QUAN TRỌNG: override phải đổi ĐỒNG THỜI cả daHoanThanh LẪN daKetThuc (không chỉ daHoanThanh).
+  // Lý do: check/uncheck 1 nội dung luôn kéo theo daKetThuc đổi tương ứng ở server (hoàn thành ->
+  // daKetThuc=true, bỏ hoàn thành -> daKetThuc=false). Nếu chỉ override daHoanThanh, trong lúc chờ
+  // server phản hồi dòng đó rơi vào trạng thái nửa vời (VD: vừa bỏ check nhưng daKetThuc cũ vẫn
+  // còn true) — nếu đang xem tab "Đã xử lý"/"Chưa xử lý" (lọc theo daKetThuc), dòng sẽ hiển thị SAI
+  // tab một lúc rồi "nhảy" đúng chỗ ngay khi dữ liệu thật về, trông như bị mất rồi hiện lại. Đổi cả
+  // 2 field cùng lúc thì UI đúng ngay từ đầu, không có khoảng nửa vời đó.
+  const rows = useMemo(
+    () =>
+      rowsGoc.map((r) =>
+        r.id in overrides ? { ...r, daHoanThanh: overrides[r.id], daKetThuc: overrides[r.id] } : r
+      ),
+    [rowsGoc, overrides]
+  );
+
+  // "Loại bỏ" = đã kết thúc, KHÔNG hoàn thành, KHÔNG phải do chuyển tuần (không có bản ghi kế tiếp).
+  const laLoaiBo = (r: NoiDungGiaoBanRow) => r.daKetThuc && !r.daHoanThanh && r.duocChuyenThanh == null;
+
+  // 3 tab chính (Tất cả/Chưa xử lý/Đã xử lý) KHÔNG bao gồm các dòng đã Loại bỏ — dòng đó chỉ nằm
+  // trong tab Loại bỏ riêng, và cũng KHÔNG tính vào tỷ lệ % (yêu cầu mới).
+  const rowsConTheoDoi = useMemo(() => rows.filter((r) => !laLoaiBo(r)), [rows]);
+  const rowsLoaiBo = useMemo(() => rows.filter(laLoaiBo), [rows]);
 
   const rowsLoc = useMemo(() => {
-    let r = rows;
+    let r = tab === "LOAI_BO" ? rowsLoaiBo : rowsConTheoDoi;
     if (tab === "CHUA_XU_LY") r = r.filter((x) => !x.daKetThuc);
     if (tab === "DA_XU_LY") r = r.filter((x) => x.daKetThuc);
     if (locPhong) r = r.filter((x) => x.phongXuLy.maPhong === locPhong);
     return r;
-  }, [rows, tab, locPhong]);
+  }, [tab, rowsConTheoDoi, rowsLoaiBo, locPhong]);
 
-  const soChuaXuLy = rows.filter((r) => !r.daKetThuc).length;
-  const soDaXuLy = rows.filter((r) => r.daKetThuc).length;
-  const soDaHoanThanh = rows.filter((r) => r.daHoanThanh).length;
-  const tyLe = rows.length === 0 ? 0 : Math.round((soDaHoanThanh / rows.length) * 100);
+  const soChuaXuLy = rowsConTheoDoi.filter((r) => !r.daKetThuc).length;
+  const soDaXuLy = rowsConTheoDoi.filter((r) => r.daKetThuc).length;
+  const soDaHoanThanh = rowsConTheoDoi.filter((r) => r.daHoanThanh).length;
+  const tyLe = rowsConTheoDoi.length === 0 ? 0 : Math.round((soDaHoanThanh / rowsConTheoDoi.length) * 100);
 
-  // Check trực tiếp trên bảng — AJAX ngầm, không chuyển trang, không hiện spinner toàn trang.
-  // Chống 2 người cùng check: server trả {thanhCong:false, lyDo} khi dữ liệu đã đổi trước đó.
-  async function toggleHoanThanh(row: NoiDungGiaoBanRow) {
-    setDangCheck(row.id);
+  // ===================== CHECKBOX: optimistic + debounce + gộp batch =====================
+
+  function layNoiDungTheoId(id: number): string {
+    return rowsRef.current.find((r) => r.id === id)?.noiDung ?? "";
+  }
+
+  function scheduleFlush() {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      if (!isSendingRef.current) doFlush();
+    }, DEBOUNCE_MS);
+  }
+
+  async function doFlush() {
+    const snapshot = { ...pendingRef.current };
+    const ids = Object.keys(snapshot).map(Number);
+    if (ids.length === 0) return;
+
+    pendingRef.current = {}; // đã chụp snapshot — pending mới phát sinh trong lúc gửi sẽ vào lượt sau
+    isSendingRef.current = true;
+    setDangGuiIds(new Set(ids));
+
     try {
-      const ketQua = row.daHoanThanh ? await boHoanThanh(row.id) : await hoanThanhNoiDung(row.id);
-      if (!ketQua.thanhCong) {
-        show("error", "Đã có người khác cập nhật", ketQua.lyDo);
+      const ketQua = await capNhatHoanThanhHangLoat(ids.map((id) => ({ id, daHoanThanh: snapshot[id] })));
+
+      if (ketQua.thanhCongIds.length > 0) {
+        show("success", "Đã cập nhật", `${ketQua.thanhCongIds.length} nội dung đã được cập nhật thành công.`);
       }
-      reload({ silent: true });
+      if (ketQua.thatBai.length > 0) {
+        // Hoàn lại đúng giá trị TRƯỚC KHI CHECK cho các dòng lỗi — vì rowsGoc (server) tại thời
+        // điểm này vẫn còn là giá trị cũ (do batch của các dòng khác có thể đã reload), nên xoá
+        // override của riêng các id lỗi để nó rơi về đúng giá trị gốc, không cần biết giá trị gốc
+        // là gì (không phải lưu lại "giá trị trước" riêng).
+        setOverrides((prev) => {
+          const next = { ...prev };
+          for (const f of ketQua.thatBai) delete next[f.id];
+          return next;
+        });
+        const danhSachLoi = ketQua.thatBai
+          .slice(0, 3)
+          .map((f) => `"${rutGonNoiDung(f.noiDung)}" (${f.lyDo})`)
+          .join("; ");
+        show(
+          "error",
+          `${ketQua.thatBai.length} nội dung cập nhật thất bại`,
+          danhSachLoi + (ketQua.thatBai.length > 3 ? "…" : "")
+        );
+      }
     } catch (e) {
-      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      // Lỗi mạng/toàn batch — hoàn lại TẤT CẢ override của lượt này để không mất đồng bộ, người
+      // dùng có thể check lại (thao tác vẫn còn nguyên trên server vì chưa gửi được gì).
+      setOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of ids) delete next[id];
+        return next;
+      });
+      show("error", "Cập nhật thất bại", loiThanThien(e, "Không thể kết nối tới máy chủ. Vui lòng thử lại."));
     } finally {
-      setDangCheck(null);
+      setDangGuiIds(new Set());
+      isSendingRef.current = false;
+      // Chờ dữ liệu thật từ server về XONG rồi mới xoá override — tránh giật hình (nhấp nháy về
+      // giá trị cũ trong lúc chờ reload) như bản trước.
+      await reload({ silent: true });
+      setOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (!(id in pendingRef.current)) delete next[id]; // id nào bị toggle tiếp trong lúc gửi thì giữ nguyên, chờ lượt sau
+        }
+        return next;
+      });
+      // Nếu trong lúc gửi người dùng bấm thêm — gửi tiếp lượt mới ngay.
+      if (Object.keys(pendingRef.current).length > 0) doFlush();
     }
   }
+
+  function toggleHoanThanh(row: NoiDungGiaoBanRow) {
+    const giaTriGoc = rowsGoc.find((r) => r.id === row.id)?.daHoanThanh ?? row.daHoanThanh;
+    const giaTriMoi = !row.daHoanThanh; // dựa trên giá trị ĐANG HIỂN THỊ (đã gồm override trước đó)
+
+    setOverrides((prev) => ({ ...prev, [row.id]: giaTriMoi }));
+
+    if (giaTriMoi === giaTriGoc) {
+      // Check rồi bỏ check lại về đúng trạng thái ban đầu -> không cần gửi API cho id này nữa.
+      delete pendingRef.current[row.id];
+    } else {
+      pendingRef.current[row.id] = giaTriMoi;
+    }
+    scheduleFlush();
+  }
+
+  // ===================== Các hành động khác =====================
 
   function hanhDong(row: NoiDungGiaoBanRow, h: HanhDongHang) {
     if (h === "chi-tiet") setRowChiTiet(row);
@@ -132,10 +254,23 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
       show("success", "Đã đề nghị", "Đã đề nghị chuyển tuần sau — chờ Admin xác nhận");
       reload({ silent: true });
     } catch (e) {
-      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Thao tác thất bại", loiThanThien(e));
     } finally {
       setDangChuyenTuan(false);
       setRowChuyenTuan(null);
+    }
+  }
+
+  async function handleKhoiPhuc(row: NoiDungGiaoBanRow) {
+    setDangKhoiPhucId(row.id);
+    try {
+      await khoiPhucNoiDungGiaoBan(row.id);
+      show("success", "Đã khôi phục", "Nội dung đã được đưa trở lại checklist");
+      reload({ silent: true });
+    } catch (e) {
+      show("error", "Khôi phục thất bại", loiThanThien(e));
+    } finally {
+      setDangKhoiPhucId(null);
     }
   }
 
@@ -146,10 +281,23 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
       show("success", "Đã chốt", "Đã chốt cuộc giao ban");
       reload();
     } catch (e) {
-      show("error", "Không thể chốt", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Không thể chốt", loiThanThien(e));
     } finally {
       setIsChotting(false);
       setConfirmChot(false);
+    }
+  }
+
+  async function handleMoLai() {
+    setDangMoLai(true);
+    try {
+      await moLaiCuocHopGiaoBan(cuocHopGiaoBanId);
+      show("success", "Đã mở lại", "Cuộc giao ban đã được mở lại, có thể thao tác tiếp");
+      reload();
+    } catch (e) {
+      show("error", "Không thể mở lại", loiThanThien(e));
+    } finally {
+      setDangMoLai(false);
     }
   }
 
@@ -188,7 +336,6 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
           >
             📊 Thống kê
           </button>
-          {/* Import chỉ Admin — trước đây gộp chung điều kiện với LĐ phòng là SAI */}
           {user?.isAdmin && dangMo && (
             <button
               onClick={openImport}
@@ -213,16 +360,29 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
               Chốt cuộc giao ban
             </button>
           )}
+          {/* Admin quyết định chốt hay không, không phụ thuộc tiến độ nội dung — và được mở lại. */}
+          {user?.isAdmin && !dangMo && (
+            <button
+              onClick={handleMoLai}
+              disabled={dangMoLai}
+              className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              {dangMoLai ? "Đang mở lại..." : "🔓 Mở lại cuộc giao ban"}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Cùng hàng: tabs Trạng thái + lọc Phòng + tổng số/tỷ lệ hoàn thành */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Sticky: tabs + lọc phòng + thống kê nhanh luôn dính lại khi cuộn xuống bảng dài */}
+      <div className="sticky top-0 z-30 -mx-1 flex flex-wrap items-center justify-between gap-3 bg-gray-50/95 px-1 py-2 backdrop-blur dark:bg-gray-900/95">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/5">
-            <TabButton active={tab === "TAT_CA"} onClick={() => setTab("TAT_CA")} label="Tất cả" count={rows.length} />
+            <TabButton active={tab === "TAT_CA"} onClick={() => setTab("TAT_CA")} label="Tất cả" count={rowsConTheoDoi.length} />
             <TabButton active={tab === "CHUA_XU_LY"} onClick={() => setTab("CHUA_XU_LY")} label="Chưa xử lý" count={soChuaXuLy} />
             <TabButton active={tab === "DA_XU_LY"} onClick={() => setTab("DA_XU_LY")} label="Đã xử lý" count={soDaXuLy} />
+            {user?.isAdmin && (
+              <TabButton active={tab === "LOAI_BO"} onClick={() => setTab("LOAI_BO")} label="Loại bỏ" count={rowsLoaiBo.length} />
+            )}
           </div>
           <select
             value={locPhong}
@@ -237,12 +397,17 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
         </div>
 
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {rows.length} công việc — Hoàn thành <b className="text-gray-700 dark:text-gray-200">{soDaHoanThanh}/{rows.length}</b> — Tỷ lệ{" "}
+          {rowsConTheoDoi.length} công việc — Hoàn thành <b className="text-gray-700 dark:text-gray-200">{soDaHoanThanh}/{rowsConTheoDoi.length}</b> — Tỷ lệ{" "}
           <b className="text-brand-600">{tyLe}%</b>
+          {rowsLoaiBo.length > 0 && <span className="text-gray-400"> (không tính {rowsLoaiBo.length} mục đã loại bỏ)</span>}
         </p>
       </div>
 
-      <GiaoBanTable rows={rowsLoc} dangCheck={dangCheck} onToggleHoanThanh={toggleHoanThanh} onHanhDong={hanhDong} />
+      {tab === "LOAI_BO" ? (
+        <LoaiBoTable rows={rowsLoc} dangKhoiPhucId={dangKhoiPhucId} onKhoiPhuc={handleKhoiPhuc} onXemChiTiet={(r) => setRowChiTiet(r)} />
+      ) : (
+        <GiaoBanTable rows={rowsLoc} dangMo={dangMo} dangGuiIds={dangGuiIds} onToggleHoanThanh={toggleHoanThanh} onHanhDong={hanhDong} />
+      )}
 
       <AddNoiDungGiaoBanModal
         isOpen={isAddOpen}
@@ -259,7 +424,7 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
         onImported={() => reload({ silent: true })}
       />
 
-      <ThongKeGiaoBanModal isOpen={isThongKeOpen} onClose={closeThongKe} rows={rows} />
+      <ThongKeGiaoBanModal isOpen={isThongKeOpen} onClose={closeThongKe} rows={rowsConTheoDoi} />
 
       <ChiTietNoiDungGiaoBanModal isOpen={rowChiTiet != null} onClose={() => setRowChiTiet(null)} row={rowChiTiet} />
       <SuaNoiDungGiaoBanModal isOpen={rowSua != null} onClose={() => setRowSua(null)} row={rowSua} onSaved={() => reload({ silent: true })} />
@@ -279,7 +444,7 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
       <ConfirmDialog
         isOpen={confirmChot}
         title="Chốt cuộc giao ban"
-        description="Sau khi chốt, không thể thao tác thêm trên các nội dung của cuộc họp này. Chỉ chốt được khi mọi nội dung đã kết thúc (hoàn thành/chuyển tuần/huỷ)."
+        description="Sau khi chốt, mọi thao tác chỉnh sửa (sửa nội dung, ghi chú, hoàn thành, chuyển tuần, huỷ) sẽ bị khoá — chỉ còn xem chi tiết/lịch sử. Bạn có thể mở lại bất kỳ lúc nào."
         isLoading={isChotting}
         onConfirm={handleChot}
         onClose={() => setConfirmChot(false)}

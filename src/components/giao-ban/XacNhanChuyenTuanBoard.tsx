@@ -14,6 +14,13 @@ import {
 type Dong = Awaited<ReturnType<typeof getDanhSachChoXacNhanChuyenTuan>>[number];
 type CuocHop = Awaited<ReturnType<typeof getCuocHopGiaoBanList>>[number];
 
+// Tuần đích chỉ được phép là tuần SAU tuần hiện tại của dòng đó (nam lớn hơn, hoặc cùng nam nhưng
+// tuan lớn hơn) — không cho chọn lùi về tuần trước (VD: đang ở tuần 38 thì không được hiện tuần 37).
+function laTuanSauHon(dich: { nam: number; tuan: number }, nguon: { nam: number; tuan: number }) {
+  if (dich.nam !== nguon.nam) return dich.nam > nguon.nam;
+  return dich.tuan > nguon.tuan;
+}
+
 export default function XacNhanChuyenTuanBoard() {
   return (
     <ToastProvider>
@@ -37,13 +44,15 @@ function BoardContent() {
         setRows(ds);
         const moList = chList.filter((c) => c.trangThai === "DANG_MO");
         setCuocHopDangMo(moList);
-        // Gợi ý mặc định: cuộc họp DANG_MO khác với cuộc họp nguồn của dòng đó, ưu tiên tuần gần nhất
+        // Gợi ý mặc định: cuộc họp DANG_MO SỚM NHẤT nhưng vẫn SAU tuần hiện tại của dòng đó.
         setDichChon((prev) => {
           const next = { ...prev };
           for (const d of ds) {
             if (next[d.id] == null) {
-              const goiY = moList.find((c) => c.id !== d.cuocHopGiaoBanId);
-              if (goiY) next[d.id] = goiY.id;
+              const ungVien = moList
+                .filter((c) => laTuanSauHon({ nam: c.nam, tuan: c.tuan }, { nam: d.cuocHopGiaoBan.nam, tuan: d.cuocHopGiaoBan.tuan }))
+                .sort((a, b) => (a.nam - b.nam) || (a.tuan - b.tuan))[0];
+              if (ungVien) next[d.id] = ungVien.id;
             }
           }
           return next;
@@ -124,7 +133,8 @@ function BoardContent() {
                 >
                   <option value="">— Chọn tuần đích —</option>
                   {cuocHopDangMo
-                    .filter((c) => c.id !== d.cuocHopGiaoBan.id)
+                    .filter((c) => laTuanSauHon({ nam: c.nam, tuan: c.tuan }, { nam: d.cuocHopGiaoBan.nam, tuan: d.cuocHopGiaoBan.tuan }))
+                    .sort((a, b) => (a.nam - b.nam) || (a.tuan - b.tuan))
                     .map((c) => (
                       <option key={c.id} value={c.id}>
                         Tuần {c.tuan}/{c.nam}

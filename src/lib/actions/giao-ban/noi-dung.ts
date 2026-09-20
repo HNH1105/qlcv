@@ -17,9 +17,10 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
 
   // SỬA: mọi người (kể cả chuyên viên) đều xem TOÀN BỘ checklist — không lọc theo phòng nữa.
   // Phân quyền thật sự nằm ở HÀNH ĐỘNG (sửa/hoàn thành), xem chi tiết ở helpers.ts.
+  // Sắp xếp theo tên Phòng rồi tới ngày tạo — theo yêu cầu, thay vì theo id.
   const rows = await prisma.noiDungGiaoBan.findMany({
     where: { cuocHopGiaoBanId: id, isDeleted: false },
-    orderBy: { id: "asc" },
+    orderBy: [{ phongXuLy: { tenPhong: "asc" } }, { createdAt: "asc" }],
     include: {
       phongXuLy: { select: { maPhong: true, tenPhong: true } },
       nguoiHoanThanh: { select: { hoTen: true } },
@@ -39,6 +40,11 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
   const daChuyenTuan = rows.filter((r) => r.daKetThuc && !r.daHoanThanh && r.duocChuyenThanh != null).length;
   const daHuy = rows.filter((r) => r.daKetThuc && !r.daHoanThanh && r.duocChuyenThanh == null).length;
 
+  // Tỷ lệ hoàn thành KHÔNG tính các nội dung đã "Loại bỏ" (huỷ/không theo dõi) — theo yêu cầu.
+  // Nội dung đã chuyển tuần VẪN tính (là "chưa hoàn thành") vì bản chất công việc chưa xong.
+  const soLoaiTruTyLe = daHuy;
+  const tongTinhTyLe = tong - soLoaiTruTyLe;
+
   return {
     cuocHop,
     rows,
@@ -48,7 +54,8 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
       dangXuLy,
       daChuyenTuan,
       daHuy,
-      tyLeHoanThanh: tong === 0 ? 0 : Math.round((daHoanThanh / tong) * 100),
+      tyLeHoanThanh: tongTinhTyLe === 0 ? 0 : Math.round((daHoanThanh / tongTinhTyLe) * 100),
+      tongTinhTyLe,
     },
   };
 }
@@ -207,5 +214,33 @@ export async function getLichSuNoiDungGiaoBan(noiDungGiaoBanId: number) {
     where: { noiDungGiaoBanId },
     orderBy: { thoiGian: "desc" },
     include: { nguoiThucHien: { select: { hoTen: true } } },
+  });
+}
+
+// ============================================================================================
+// KHÔI PHỤC nội dung đã "Loại bỏ" — CHỈ Admin, dùng ở tab "Loại bỏ". Đưa nội dung trở lại theo
+// dõi bình thường (daKetThuc=false); KHÔNG xoá ghi chú lý do huỷ cũ để giữ dấu vết lịch sử, người
+// dùng có thể tự xoá tay qua "Cập nhật ghi chú" nếu muốn.
+// ============================================================================================
+
+export async function khoiPhucNoiDungGiaoBan(id: number) {
+  const session = await requireSession();
+  if (!session.isAdmin) throw new Error("Chỉ Admin mới được khôi phục nội dung đã loại bỏ.");
+
+  const row = await prisma.noiDungGiaoBan.findUniqueOrThrow({
+    where: { id },
+    include: { cuocHopGiaoBan: true, duocChuyenThanh: { select: { id: true } } },
+  });
+  if (row.cuocHopGiaoBan.trangThai !== "DANG_MO") {
+    throw new Error("Cuộc giao ban đã chốt, không thể khôi phục nội dung.");
+  }
+  if (!row.daKetThuc || row.daHoanThanh || row.duocChuyenThanh != null) {
+    throw new Error("Nội dung này không ở trạng thái Loại bỏ, không thể khôi phục.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.noiDungGiaoBan.update({ where: { id }, data: { daKetThuc: false } });
+    await ghiLog(tx, id, session.maNV, "KHOI_PHUC");
+    return updated;
   });
 }
