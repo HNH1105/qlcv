@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useToast } from "@/components/ca-nhan/ToastProvider";
+import { loiThanThien } from "@/lib/giao-ban/loi-than-thien";
 import { huyKhongTheoDoi } from "@/lib/actions/giao-ban";
 import type { NoiDungGiaoBanRow } from "../GiaoBanTable";
 
@@ -35,7 +36,7 @@ export default function LoaiKhoiDanhSachModal({
       onClose();
       setLyDo("");
     } catch (e) {
-      show("error", "Thao tác thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Thao tác thất bại", loiThanThien(e));
     } finally {
       setIsSaving(false);
     }

@@ -8,6 +8,7 @@ import Button from "@/components/ui/button/Button";
 import DatePicker from "@/components/form/date-picker";
 import NguoiPhoiHopSelect from "@/components/ca-nhan/NguoiPhoiHopSelect";
 import { useToast } from "@/components/ca-nhan/ToastProvider";
+import { loiThanThien } from "@/lib/giao-ban/loi-than-thien";
 import { getNhanVienList } from "@/lib/actions/danh-muc";
 import { suaNoiDungGiaoBan, capNhatNguoiXuLy } from "@/lib/actions/giao-ban";
 import { MucDoUuTienGiaoBan } from "@prisma/client";
@@ -74,7 +75,7 @@ export default function SuaNoiDungGiaoBanModal({
       onSaved();
       onClose();
     } catch (e) {
-      show("error", "Lưu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Lưu thất bại", loiThanThien(e));
     } finally {
       setIsSaving(false);
     }

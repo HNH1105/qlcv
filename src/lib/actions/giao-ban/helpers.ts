@@ -109,3 +109,29 @@ export function timNoiDungGiaoBanDangSongTuKeHoach(keHoachTuanId: number) {
     where: { keHoachTuanId, daKetThuc: false, isDeleted: false },
   });
 }
+
+// ============================================================================================
+// ĐỒNG BỘ NGƯỢC CHUỖI TUẦN — khi 1 nội dung được đánh dấu (bỏ) hoàn thành, các bản ghi TUẦN
+// TRƯỚC trong cùng chuỗi carry-over (nối qua nguonNoiDungGiaoBanId) cũng phải hiện cùng trạng thái
+// hoàn thành để xem lịch sử các tuần cũ không bị "lệch" (tuần trước hiện dở dang dù việc đã xong).
+// CHỈ đổi cờ daHoanThanh hiển thị — KHÔNG đụng daKetThuc (các bản ghi tuần trước vốn đã kết thúc
+// theo dõi từ lúc chuyển tuần, giữ nguyên) và KHÔNG đụng nguoiHoanThanhId/thoiGianHoanThanh của
+// từng bản ghi cũ (giữ đúng lịch sử ai đã làm gì ở tuần đó, không ghi đè lẫn nhau).
+// ============================================================================================
+
+export async function dongBoNguocChuoiTuan(tx: PrismaTx, id: number, daHoanThanh: boolean) {
+  let currentId: number | null = id;
+  // Giới hạn 200 vòng lặp để chắc chắn không bao giờ treo vô hạn nếu dữ liệu lỗi tạo vòng lặp.
+  for (let i = 0; i < 200; i++) {
+    const cur: { nguonNoiDungGiaoBanId: number | null } | null = await tx.noiDungGiaoBan.findUnique({
+      where: { id: currentId! },
+      select: { nguonNoiDungGiaoBanId: true },
+    });
+    if (!cur?.nguonNoiDungGiaoBanId) break;
+    await tx.noiDungGiaoBan.update({
+      where: { id: cur.nguonNoiDungGiaoBanId },
+      data: { daHoanThanh },
+    });
+    currentId = cur.nguonNoiDungGiaoBanId;
+  }
+}

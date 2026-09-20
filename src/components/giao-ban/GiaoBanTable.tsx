@@ -25,16 +25,22 @@ export type NoiDungGiaoBanRow = {
   duocChuyenThanh: { id: number } | null;
 };
 
-export type HanhDongHang = "chi-tiet" | "sua" | "ghi-chu" | "chuyen-tuan" | "huy" | "lich-su";
+export type HanhDongHang = "chi-tiet" | "sua" | "ghi-chu" | "chuyen-tuan" | "huy" | "lich-su" | "khoi-phuc";
 
 export default function GiaoBanTable({
   rows,
-  dangCheck,
+  dangMo,
+  dangGuiIds,
   onToggleHoanThanh,
   onHanhDong,
 }: {
   rows: NoiDungGiaoBanRow[];
-  dangCheck?: number | null;
+  // Cuộc họp đã chốt hay chưa — khi đã chốt, CHỈ còn "Xem chi tiết"/"Xem lịch sử", mọi thao tác
+  // chỉnh sửa (kể cả checkbox hoàn thành) đều ẩn hẳn, không chỉ disable.
+  dangMo: boolean;
+  // id các dòng đang chờ phản hồi từ server (đang trong 1 đợt gửi debounce) — chỉ để hiện hiệu ứng
+  // "đang đồng bộ" nhẹ, KHÔNG khoá click (người dùng vẫn bấm tiếp được ngay, đúng yêu cầu optimistic).
+  dangGuiIds?: Set<number>;
   onToggleHoanThanh: (row: NoiDungGiaoBanRow) => void;
   onHanhDong: (row: NoiDungGiaoBanRow, hanhDong: HanhDongHang) => void;
 }) {
@@ -45,10 +51,6 @@ export default function GiaoBanTable({
   }
 
   return (
-    // KHÔNG dùng overflow-hidden ở đây nữa — đó là lý do menu "..." bị che trước đây. Bo góc vẫn
-    // giữ bằng rounded-xl, chỉ phần scroll ngang mới cần overflow-x-auto (đặt ở div con), còn menu
-    // dropdown tự thoát ra bằng portal (xem RowActionsMenu) nên không còn bị ảnh hưởng bởi việc
-    // cắt overflow của container nữa.
     <div className="rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div className="max-w-full overflow-x-auto">
         <div className="min-w-[1040px]">
@@ -69,32 +71,37 @@ export default function GiaoBanTable({
             <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {rows.map((r, idx) => {
                 const quyen = tinhQuyenClient(user, r.phongXuLy.maPhong);
+                const coTheCheck = dangMo && quyen.danhDauHoanThanh;
                 const quaHan = !r.daKetThuc && new Date(r.hanHoanThanh) < new Date();
-                const dangXuLyDong = dangCheck === r.id;
+                const dangGui = dangGuiIds?.has(r.id) ?? false;
                 const tenChuyenVien = r.nguoiXuLys.map((x) => x.nhanVien.hoTen);
+                const laChuyenTuan = r.duocChuyenThanh != null;
 
                 return (
-                  <TableRow key={r.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.02]">
+                  <TableRow key={r.id} className={`hover:bg-gray-50 dark:hover:bg-white/[0.02] ${dangGui ? "opacity-60" : ""}`}>
                     <TableCell className="px-4 py-4 text-start align-top">
                       <div className="flex items-center gap-2.5">
                         <span className="text-theme-sm text-gray-500">{idx + 1}</span>
-                        <button
-                          type="button"
-                          disabled={!quyen.danhDauHoanThanh || dangXuLyDong}
-                          onClick={() => onToggleHoanThanh(r)}
-                          title={r.daHoanThanh ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                            r.daHoanThanh
-                              ? "border-brand-500 bg-brand-500 text-white"
-                              : "border-gray-300 bg-white hover:border-brand-400 dark:border-gray-600 dark:bg-transparent"
-                          } ${!quyen.danhDauHoanThanh ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
-                        >
-                          {r.daHoanThanh && (
-                            <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3">
-                              <path d="M2 6l2.5 2.5L10 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
+                        {/* Khác phòng / không có quyền / cuộc họp đã chốt -> ẨN HẲN checkbox, không
+                            phải chỉ disable, theo đúng yêu cầu "đỡ lộn". */}
+                        {coTheCheck && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleHoanThanh(r)}
+                            title={r.daHoanThanh ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                            className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition-colors ${
+                              r.daHoanThanh
+                                ? "border-brand-500 bg-brand-500 text-white"
+                                : "border-gray-300 bg-white hover:border-brand-400 dark:border-gray-600 dark:bg-transparent"
+                            }`}
+                          >
+                            {r.daHoanThanh && (
+                              <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3">
+                                <path d="M2 6l2.5 2.5L10 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </TableCell>
 
@@ -111,7 +118,11 @@ export default function GiaoBanTable({
                     </TableCell>
 
                     <TableCell className="px-4 py-3 align-top">
-                      <p className="line-clamp-2 whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                      <p
+                        className={`line-clamp-2 whitespace-normal break-words text-xs ${
+                          laChuyenTuan ? "font-medium text-error-600" : "text-gray-500 dark:text-gray-400"
+                        }`}
+                      >
                         {r.ghiChu || <span className="italic text-gray-300 dark:text-gray-600">—</span>}
                       </p>
                     </TableCell>
@@ -143,7 +154,13 @@ export default function GiaoBanTable({
                     </TableCell>
 
                     <TableCell className="px-2 py-3 align-top text-end">
-                      <RowActionsMenu quyen={quyen} daKetThuc={r.daKetThuc} daNghiChuyenTuan={r.deNghiChuyenTuan} onChon={(h) => onHanhDong(r, h)} />
+                      <RowActionsMenu
+                        quyen={quyen}
+                        dangMo={dangMo}
+                        daKetThuc={r.daKetThuc}
+                        daNghiChuyenTuan={r.deNghiChuyenTuan}
+                        onChon={(h) => onHanhDong(r, h)}
+                      />
                     </TableCell>
                   </TableRow>
                 );
@@ -156,16 +173,17 @@ export default function GiaoBanTable({
   );
 }
 
-// Menu "..." — render qua PORTAL vào document.body, định vị bằng toạ độ thật của nút bấm. Đây là
-// cách sửa dứt điểm lỗi menu bị che bởi overflow của bảng cuộn ngang: dropdown không còn là con
-// DOM của bất kỳ container nào có overflow/scroll cắt nó nữa.
+// Menu "..." — render qua PORTAL vào document.body, định vị bằng toạ độ thật của nút bấm, để
+// không bị che bởi overflow của bảng cuộn ngang.
 function RowActionsMenu({
   quyen,
+  dangMo,
   daKetThuc,
   daNghiChuyenTuan,
   onChon,
 }: {
   quyen: { suaNoiDung: boolean; capNhatGhiChu: boolean; loaiKhoiDanhSach: boolean; chuyenTuanSau: boolean };
+  dangMo: boolean;
   daKetThuc: boolean;
   daNghiChuyenTuan: boolean;
   onChon: (hanhDong: HanhDongHang) => void;
@@ -229,10 +247,11 @@ function RowActionsMenu({
           >
             {item("👁 Xem chi tiết", "chi-tiet")}
             {item("🕘 Xem lịch sử", "lich-su")}
-            {quyen.suaNoiDung && item("✏️ Sửa nội dung / hạn / ưu tiên / người xử lý", "sua")}
-            {quyen.capNhatGhiChu && item("📝 Cập nhật ghi chú", "ghi-chu")}
-            {quyen.chuyenTuanSau && !daKetThuc && item(daNghiChuyenTuan ? "Đã đề nghị chuyển tuần" : "→ Chuyển tuần sau", "chuyen-tuan", { disabled: daNghiChuyenTuan })}
-            {quyen.loaiKhoiDanhSach && !daKetThuc && item("✕ Loại khỏi danh sách", "huy", { danger: true })}
+            {/* Cuộc họp đã chốt -> chỉ giữ 2 mục trên, ẩn hẳn các thao tác chỉnh sửa còn lại. */}
+            {dangMo && quyen.suaNoiDung && item("✏️ Sửa nội dung / hạn / ưu tiên / người xử lý", "sua")}
+            {dangMo && quyen.capNhatGhiChu && item("📝 Cập nhật ghi chú", "ghi-chu")}
+            {dangMo && quyen.chuyenTuanSau && !daKetThuc && item(daNghiChuyenTuan ? "Đã đề nghị chuyển tuần" : "→ Chuyển tuần sau", "chuyen-tuan", { disabled: daNghiChuyenTuan })}
+            {dangMo && quyen.loaiKhoiDanhSach && !daKetThuc && item("✕ Loại khỏi danh sách", "huy", { danger: true })}
           </div>,
           document.body
         )}

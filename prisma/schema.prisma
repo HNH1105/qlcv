@@ -117,6 +117,7 @@ enum HanhDongGiaoBan {
   XAC_NHAN_CHUYEN_TUAN
   HUY_KHONG_THEO_DOI
   DONG_BO_HOAN_THANH
+  KHOI_PHUC
 }
 
 // ==========================================================================================

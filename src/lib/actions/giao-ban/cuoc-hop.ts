@@ -74,23 +74,27 @@ export async function taoCuocHopGiaoBan(nam: number, tuan: number, ngayHop: Date
   });
 }
 
-// Chốt cuộc giao ban — không cho chốt nếu còn nội dung daKetThuc=false (mục 25).
+// Chốt cuộc giao ban — theo yêu cầu mới: Admin TOÀN QUYỀN quyết định chốt hay không, KHÔNG bắt
+// buộc mọi nội dung phải kết thúc trước (bỏ hẳn ràng buộc cũ). Chốt chỉ có ý nghĩa "khoá thao tác
+// chỉnh sửa" (sửa/ghi chú/hoàn thành/chuyển tuần/huỷ), không liên quan tiến độ nội dung.
 export async function chotCuocHopGiaoBan(id: number) {
   const session = await requireSession();
   if (!session.isAdmin) throw new Error("Chỉ Admin mới được chốt cuộc giao ban.");
 
-  const conDoDang = await prisma.noiDungGiaoBan.count({
-    where: { cuocHopGiaoBanId: id, isDeleted: false, daKetThuc: false },
-  });
-  if (conDoDang > 0) {
-    throw new Error(
-      "Cuộc giao ban còn nội dung chưa kết thúc. Vui lòng hoàn thành, hủy/không theo dõi hoặc chuyển tuần trước khi chốt cuộc giao ban."
-    );
-  }
-
   return prisma.cuocHopGiaoBan.update({
     where: { id },
     data: { trangThai: "DA_CHOT" },
+  });
+}
+
+// Mở lại cuộc giao ban đã chốt — chỉ Admin, theo yêu cầu mới.
+export async function moLaiCuocHopGiaoBan(id: number) {
+  const session = await requireSession();
+  if (!session.isAdmin) throw new Error("Chỉ Admin mới được mở lại cuộc giao ban.");
+
+  return prisma.cuocHopGiaoBan.update({
+    where: { id },
+    data: { trangThai: "DANG_MO" },
   });
 }
 
