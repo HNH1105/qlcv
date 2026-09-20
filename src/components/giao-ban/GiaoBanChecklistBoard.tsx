@@ -108,8 +108,19 @@ function BoardContent({ cuocHopGiaoBanId }: { cuocHopGiaoBanId: number }) {
 
   // Áp overrides lên rows gốc — mọi nơi khác trong component (bảng, tab đếm số, tỷ lệ) đều dùng
   // MẢNG NÀY thay vì rowsGoc, để hiển thị optimistic nhất quán khắp nơi.
+  //
+  // QUAN TRỌNG: override phải đổi ĐỒNG THỜI cả daHoanThanh LẪN daKetThuc (không chỉ daHoanThanh).
+  // Lý do: check/uncheck 1 nội dung luôn kéo theo daKetThuc đổi tương ứng ở server (hoàn thành ->
+  // daKetThuc=true, bỏ hoàn thành -> daKetThuc=false). Nếu chỉ override daHoanThanh, trong lúc chờ
+  // server phản hồi dòng đó rơi vào trạng thái nửa vời (VD: vừa bỏ check nhưng daKetThuc cũ vẫn
+  // còn true) — nếu đang xem tab "Đã xử lý"/"Chưa xử lý" (lọc theo daKetThuc), dòng sẽ hiển thị SAI
+  // tab một lúc rồi "nhảy" đúng chỗ ngay khi dữ liệu thật về, trông như bị mất rồi hiện lại. Đổi cả
+  // 2 field cùng lúc thì UI đúng ngay từ đầu, không có khoảng nửa vời đó.
   const rows = useMemo(
-    () => rowsGoc.map((r) => (r.id in overrides ? { ...r, daHoanThanh: overrides[r.id] } : r)),
+    () =>
+      rowsGoc.map((r) =>
+        r.id in overrides ? { ...r, daHoanThanh: overrides[r.id], daKetThuc: overrides[r.id] } : r
+      ),
     [rowsGoc, overrides]
   );
 

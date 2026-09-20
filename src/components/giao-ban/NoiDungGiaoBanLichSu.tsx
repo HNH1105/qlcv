@@ -23,6 +23,7 @@ const NHAN_HANH_DONG: Record<HanhDongGiaoBan, string> = {
   XAC_NHAN_CHUYEN_TUAN: "Xác nhận chuyển tuần",
   HUY_KHONG_THEO_DOI: "Huỷ / không theo dõi",
   DONG_BO_HOAN_THANH: "Đồng bộ hoàn thành từ nguồn",
+  KHOI_PHUC: "Khôi phục (đem lại checklist)",
 };
 
 type Log = Awaited<ReturnType<typeof getLichSuNoiDungGiaoBan>>[number];
