@@ -117,6 +117,19 @@ export default function GiaoBanTable({
     return <p className="py-12 text-center text-gray-400">Chưa có nội dung nào.</p>;
   }
 
+  // Độ rộng TỐI THIỂU cho cả bảng = tổng các cột cố định + 1 mức tối thiểu hợp lý cho cột Nội
+  // dung (auto). BẮT BUỘC phải có minWidth này — nếu chỉ để width:100% suông, màn hình hẹp (điện
+  // thoại/iPad) sẽ ép cột Nội dung (auto) bị bóp gần về 0 vì tổng các cột cố định còn lại đã vượt
+  // quá bề ngang màn hình rồi, khiến chữ xuống dòng từng ký tự, hàng cao vọt lên và gần như mất
+  // chữ (đúng lỗi đã gặp). Có minWidth thì màn hình hẹp sẽ tự cuộn ngang thay vì bị bóp méo, còn
+  // màn hình rộng vẫn full 100% như cũ. Tính động theo doRong hiện tại để luôn đúng kể cả sau khi
+  // người dùng đã tự kéo đổi cột.
+  const NOI_DUNG_MIN_HOP_LY = 220;
+  const doRongCoDinh = Object.entries(doRong)
+    .filter(([key]) => key !== "noiDung")
+    .reduce((tong, [, w]) => tong + (w ?? 0), 0);
+  const doRongToiThieuBang = doRongCoDinh + Math.max(doRong.noiDung ?? 0, NOI_DUNG_MIN_HOP_LY);
+
   const header = (label: string, key: string, keoDuoc = true) => (
     <th
       className="relative border-b border-gray-100 px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:border-white/[0.05] dark:text-gray-400"
@@ -129,7 +142,7 @@ export default function GiaoBanTable({
   return (
     <div className="rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div className="max-w-full overflow-x-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: doRongToiThieuBang }}>
           <colgroup>
             {Object.entries(doRong).map(([key, w]) => (
               <col key={key} style={w != null ? { width: w } : undefined} />
