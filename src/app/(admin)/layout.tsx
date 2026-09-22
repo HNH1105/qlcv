@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { AuthProvider } from "@/context/AuthContext";
 import AdminShell from "@/layout/AdminShell";
 import { NavProgressProvider } from "@/components/providers/NavProgressProvider";
+import Footer from "@/components/common/Footer";
+
 export default async function AdminLayout({
   children,
 }: {
@@ -15,12 +17,16 @@ export default async function AdminLayout({
   }
 
   return (
+    <AuthProvider user={session}>
+      <NavProgressProvider>
+        <div className="flex min-h-screen flex-col">
+          <div className="flex-1">
+            <AdminShell>{children}</AdminShell>
+          </div>
 
-      <AuthProvider user={session}>
-            <NavProgressProvider>
-        <AdminShell>{children}</AdminShell>
-          </NavProgressProvider>
-      </AuthProvider>
-  
+          <Footer />
+        </div>
+      </NavProgressProvider>
+    </AuthProvider>
   );
 }
