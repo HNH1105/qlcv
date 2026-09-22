@@ -75,7 +75,7 @@ export default function ChiTietModal({
               <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Trạng thái</p>
               <p className={row.daHoanThanh ? "text-success-600" : "text-error-600"}>
                 {row.daHoanThanh ? "Đã hoàn thành" : "Chưa hoàn thành"}
-                {row.laCuaPhong && " · Đã chuyển Kế hoạch Phòng"}
+                {row.laCuaPhong && " · Là Kế hoạch Phòng"}
               </p>
               {row.daHoanThanh && row.thoiGianHoanThanh && (
                 <p className="mt-0.5 text-xs text-gray-400">

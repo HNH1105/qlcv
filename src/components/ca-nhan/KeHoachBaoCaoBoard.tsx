@@ -27,8 +27,8 @@ const STATUS_TABS: { key: StatusTab; label: string }[] = [
   { key: "tatCa", label: "Tất cả trạng thái" },
   { key: "chuaThucHien", label: "Chưa thực hiện" },
   { key: "daThucHien", label: "Đã thực hiện" },
-  { key: "daChuyenPhong", label: "Đã chuyển phòng" },
-  { key: "chuaChuyenPhong", label: "Chưa chuyển phòng" },
+  { key: "daChuyenPhong", label: "KH Phòng" },
+  { key: "chuaChuyenPhong", label: "Chưa đánh dấu KH phòng" },
 ];
 
 export default function KeHoachBaoCaoBoard({ loai }: { loai: LoaiGhiNhan }) {
@@ -300,7 +300,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
         isOpen={isBulkMarkConfirmOpen}
         title="Đánh dấu hoàn thành hàng loạt"
         description={`Bạn chắc chắn ${selectedIds.length} kế hoạch đã chọn đều đã hoàn thành?`}
-        note='Đồng thời đánh dấu hoàn thành Kế hoạch Phòng tương ứng (áp dụng cho các mục đã "Đã chuyển Phòng").'
+        note='Đồng thời đánh dấu hoàn thành Kế hoạch Phòng tương ứng (áp dụng cho các mục đã "Đánh dấu là KH Phòng").'
         isLoading={isBulkMarking}
         onConfirm={handleBulkMarkHoanThanh}
         onClose={() => setIsBulkMarkConfirmOpen(false)}

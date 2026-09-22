@@ -46,6 +46,7 @@ export async function getDanhSachNguoiDung(input: { maPhong?: string; tuKhoa?: s
       hoTen: true,
       chucVu: true,
       hoatDong: true,
+      maPhong: true,
       phong: { select: { tenPhong: true } },
       taiKhoan: {
         select: { tenDangNhap: true, isAdmin: true, biKhoa: true, lanDangNhapCuoi: true },
@@ -83,4 +84,72 @@ export async function resetMatKhau(maNV: string) {
   // Trả mật khẩu THUẦN VĂN BẢN (plain text) về cho Admin xem — CHỈ hiển thị đúng 1 lần ngay sau
   // khi reset, không lưu lại plain text ở đâu cả (không log, không ghi bảng nào khác).
   return { hoTen: nv.hoTen, tenDangNhap: nv.taiKhoan.tenDangNhap, matKhauMoi };
+}
+
+// ============================================================================================
+// TẠO NGƯỜI DÙNG MỚI — tạo đồng thời NhanVien + TaiKhoan (1 nhân viên luôn gắn đúng 1 tài khoản
+// ngay từ lúc tạo, không có khái niệm "nhân viên chưa có tài khoản" ở luồng tạo mới — trường hợp
+// "Chưa có tài khoản" hiển thị ở bảng là cho dữ liệu cũ tạo tay/import trước đây).
+// ============================================================================================
+
+export async function taoNguoiDung(input: {
+  maNV: string;
+  hoTen: string;
+  maPhong: string;
+  chucVu?: string;
+  tenDangNhap: string;
+}) {
+  const session = await requireSession();
+  kiemTraAdmin(session);
+
+  const maNV = input.maNV.trim();
+  const hoTen = input.hoTen.trim();
+  const tenDangNhap = input.tenDangNhap.trim();
+  if (!maNV || !hoTen || !input.maPhong || !tenDangNhap) {
+    throw new Error("Vui lòng nhập đầy đủ Mã nhân viên, Họ tên, Phòng, Tên đăng nhập.");
+  }
+
+  const [trungMaNV, trungTenDangNhap] = await Promise.all([
+    prisma.nhanVien.findUnique({ where: { maNV } }),
+    prisma.taiKhoan.findUnique({ where: { tenDangNhap } }),
+  ]);
+  if (trungMaNV) throw new Error(`Mã nhân viên "${maNV}" đã tồn tại.`);
+  if (trungTenDangNhap) throw new Error(`Tên đăng nhập "${tenDangNhap}" đã được dùng, vui lòng chọn tên khác.`);
+
+  const matKhauMoi = taoMatKhauNgauNhien();
+  const matKhauHash = await bcrypt.hash(matKhauMoi, 10);
+
+  await prisma.nhanVien.create({
+    data: {
+      maNV,
+      hoTen,
+      maPhong: input.maPhong,
+      chucVu: input.chucVu?.trim() || null,
+      taiKhoan: { create: { tenDangNhap, matKhauHash } },
+    },
+  });
+
+  // Cùng shape với resetMatKhau() — dùng chung 1 modal hiển thị mật khẩu ở phía UI cho cả 2 luồng.
+  return { hoTen, tenDangNhap, matKhauMoi };
+}
+
+// ============================================================================================
+// SỬA THÔNG TIN CƠ BẢN — Họ tên / Phòng / Chức vụ. KHÔNG đụng tới tenDangNhap/mật khẩu ở đây (đổi
+// tên đăng nhập là việc nhạy cảm hơn, nếu cần thì làm action riêng sau).
+// ============================================================================================
+
+export async function suaThongTinNguoiDung(
+  maNV: string,
+  input: { hoTen: string; maPhong: string; chucVu?: string }
+) {
+  const session = await requireSession();
+  kiemTraAdmin(session);
+
+  const hoTen = input.hoTen.trim();
+  if (!hoTen || !input.maPhong) throw new Error("Vui lòng nhập đầy đủ Họ tên và Phòng.");
+
+  return prisma.nhanVien.update({
+    where: { maNV },
+    data: { hoTen, maPhong: input.maPhong, chucVu: input.chucVu?.trim() || null },
+  });
 }

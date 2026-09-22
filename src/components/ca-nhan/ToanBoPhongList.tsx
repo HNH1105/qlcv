@@ -57,7 +57,7 @@ export default function ToanBoPhongList({
                     {row.noiDung}
                     {row.laCuaPhong && (
                       <span className="ml-2 inline-block rounded-full bg-purple-100 px-2.5 py-0.5 align-middle text-xs font-medium text-purple-700 dark:bg-purple-500/15 dark:text-purple-400">
-                        Đã chuyển Phòng
+                        KH Phòng
                       </span>
                     )}
                   </p>
