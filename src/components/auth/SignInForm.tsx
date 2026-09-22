@@ -22,7 +22,7 @@ export default function SignInForm() {
               Đăng nhập
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Nhập tên đăng nhập và mật khẩu để vào hệ thống. Tên tài khoản là tài khoản ioffice.
+              Nhập tên đăng nhập và mật khẩu để vào hệ thống. Tên tài khoản là tài khoản ioffice. Pass mặc định Syt@2026
             </p>
           </div>
 
@@ -85,6 +85,11 @@ export default function SignInForm() {
                         Hỗ trợ kỹ thuật: Nguyễn Hoàng Huệ
                         <span className="mx-2">|</span>
                         SĐT: 078.789.5345
+                    </span>
+                     <span className="mt-1 block">
+                        Tài liệu hướng dẫn: <a href="https://drive.google.com/file/d/1nWzHGHGsVa9YyNfJjTp6JEjmpNdwWOC4/view?usp=sharing" target="_blank" className="text-blue-600 hover:underline dark:text-blue-400">Link</a>
+                        <span className="mx-2">|</span>
+                        Clip hướng dẫn: <a href="https://www.youtube.com/watch?v=jj0zcBEJ67s" target="_blank" className="text-blue-600 hover:underline dark:text-blue-400">Link</a>
                     </span>
                 </span>
             </div>      
