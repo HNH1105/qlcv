@@ -22,7 +22,7 @@ export default function SignInForm() {
               Đăng nhập
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Nhập tên đăng nhập và mật khẩu để vào hệ thống. Tên tài khoản là tài khoản ioffice, mk mặt định là Syt@2026. 
+              Nhập tên đăng nhập và mật khẩu để vào hệ thống. Tên tài khoản là tài khoản ioffice.
             </p>
           </div>
 
@@ -42,7 +42,7 @@ export default function SignInForm() {
                   name="tenDangNhap"
                   type="text"
                   placeholder="vd: nhhue.syt"
-                 // autoComplete="username"
+                // autoComplete="username"
                 />
               </div>
 
@@ -55,7 +55,7 @@ export default function SignInForm() {
                     name="matKhau"
                     type={showPassword ? "text" : "password"}
                     placeholder="Nhập mật khẩu"
-                    //autoComplete="current-password"
+                  //autoComplete="current-password"
                   />
                   <span
                     onClick={() => setShowPassword(!showPassword)}
@@ -75,6 +75,21 @@ export default function SignInForm() {
                   {isPending ? "Đang đăng nhập..." : "Đăng nhập"}
                 </Button>
               </div>
+              
+                <div className="flex w-full items-center justify-center text-xs text-gray-500 dark:text-gray-400">
+                <span className="shrink-0 text-center">
+                    <span className="block">
+                        © 2026 Sở Y tế tỉnh Vĩnh Long
+                    </span>
+                    <span className="mt-1 block">
+                        Hỗ trợ kỹ thuật: Nguyễn Hoàng Huệ
+                        <span className="mx-2">|</span>
+                        SĐT: 078.789.5345
+                    </span>
+                </span>
+            </div>      
+
+
             </div>
           </form>
         </div>
