@@ -87,7 +87,7 @@ export default function SignInForm() {
                         SĐT: 078.789.5345
                     </span>
                      <span className="mt-1 block">
-                        Tài liệu hướng dẫn: <a href="https://qlcvsyt.vercel.app/files/huong-dan/hdsd.pdf" target="_blank" className="text-blue-600 hover:underline dark:text-blue-400">Link</a>
+                        Tài liệu hướng dẫn: <a href="https://drive.google.com/file/d/1nWzHGHGsVa9YyNfJjTp6JEjmpNdwWOC4/view?usp=sharing" target="_blank" className="text-blue-600 hover:underline dark:text-blue-400">Link</a>
                         <span className="mx-2">|</span>
                         Clip hướng dẫn: <a href="https://www.youtube.com/watch?v=jj0zcBEJ67s" target="_blank" className="text-blue-600 hover:underline dark:text-blue-400">Link</a>
                     </span>
