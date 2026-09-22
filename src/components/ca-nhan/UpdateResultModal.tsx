@@ -101,7 +101,7 @@ export default function UpdateResultModal({
       )}
       {showChuyenPhongNote && (
         <p className="mb-6 text-xs text-gray-400">
-          Nếu mục đã "Đã chuyển Phòng", Kết quả/Ghi chú cũng sẽ tự động cập nhật cho Kế hoạch Phòng
+          Nếu mục đã "KH phòng", Kết quả/Ghi chú cũng sẽ tự động cập nhật cho Kế hoạch Phòng
           tương ứng.
         </p>
       )}

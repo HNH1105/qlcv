@@ -170,7 +170,7 @@ function getNavItems(quyen?: string): NavItem[] {
     },
     {
           icon: <GridIcon />,
-          name: "Check list Giao ban (Test)",
+          name: "Check list Giao ban tuần",
           subItems: [
               { name: "Danh sách giao ban tuần", path: "/giao-ban", pro: false },
           ],

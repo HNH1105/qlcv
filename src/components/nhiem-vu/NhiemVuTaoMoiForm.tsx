@@ -73,7 +73,7 @@ function NoiDungForm({
   const [phongPhoiHopIds, setPhongPhoiHopIds] = useState<string[]>([]);
   const [nguoiPhoiHopIds, setNguoiPhoiHopIds] = useState<string[]>([]);
 
-  const [kieuHan, setKieuHan] = useState<"cuThe" | "dinhKy" | "khong">("khong");
+  const [kieuHan, setKieuHan] = useState<"cuThe" | "dinhKy" | "khong">("cuThe");
   const [hanXuLy, setHanXuLy] = useState("");
   const [tanSuatNhac, setTanSuatNhac] = useState<TanSuatNhac>("HANG_THANG");
   const [ngayBatDauNhac, setNgayBatDauNhac] = useState("");
@@ -269,7 +269,7 @@ function NoiDungForm({
             </div>
             <div className="min-w-[160px] flex-1">
               <Label>Nguồn</Label>
-              <Input value={nguon} onChange={(e) => setNguon(e.target.value)} placeholder="VD: Chỉ đạo miệng, công văn..." />
+              <Input value={nguon} onChange={(e) => setNguon(e.target.value)} placeholder="VD:Công văn, chỉ đạo từ BGĐ..." />
             </div>
             <div className="min-w-[160px] flex-1">
               <Label>Văn bản liên quan</Label>
@@ -377,9 +377,9 @@ function NoiDungForm({
             <div className="mb-3 flex flex-wrap gap-4">
               {(
                 [
-                  { key: "khong", label: "Không đặt hạn" },
-                  { key: "cuThe", label: "Có hạn xử lý cụ thể" },
+                  { key: "cuThe", label: "Hạn xử lý" },
                   { key: "dinhKy", label: "Nhắc lặp lại định kỳ" },
+                  // { key: "khong", label: "Không hạn" },
                 ] as { key: typeof kieuHan; label: string }[]
               ).map((o) => (
                 <label key={o.key} className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">

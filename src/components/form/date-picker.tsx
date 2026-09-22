@@ -30,6 +30,7 @@ export default function DatePicker({
       monthSelectorType: "static",
       dateFormat: "Y-m-d",
       defaultDate,
+      disableMobile: true,
       onChange,
     });
 
