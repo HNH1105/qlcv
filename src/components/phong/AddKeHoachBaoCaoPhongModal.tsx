@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
@@ -12,15 +12,20 @@ import { getNhanVienList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
 import {
   getCurrentWeekInfo,
+  getNextWeekInfo,
   getWeekDateRangeLabel,
   getTuanOptions,
-  isoWeeksInYear,
   parseTuanOptionValue,
 } from "@/lib/week";
 import { LoaiGhiNhan } from "@prisma/client";
 import { useToast } from "@/components/ca-nhan/ToastProvider";
 
 type NhanVien = { maNV: string; hoTen: string; maPhong: string };
+
+// MỘT Ô "Nội dung" trong form — `id` CHỈ LÀ KHOÁ TẠM DÙNG TRONG REACT, KHÔNG PHẢI id bản ghi
+// trong DB. Mỗi ô, khi lưu, sẽ trở thành 1 LẦN GỌI submitKeHoachPhong RIÊNG.
+// `ketQua` CHỈ có ý nghĩa khi loai=BAOCAO — mỗi Nội dung đi kèm ĐÚNG 1 Kết quả riêng của nó.
+type NoiDungItem = { id: string; value: string; ketQua: string };
 
 // Modal Thêm mới CẤP PHÒNG — cùng bố cục với AddKeHoachBaoCaoModal (cá nhân) nhưng:
 // - KHÔNG có checkbox "chuyển thành phòng" (dòng này đã là cấp Phòng rồi, không cần chuyển tiếp).
@@ -47,22 +52,27 @@ export default function AddKeHoachBaoCaoPhongModal({
   const isBaoCao = loai === "BAOCAO";
 
   const { nam: namHienTai, tuan: tuanHienTai } = getCurrentWeekInfo();
+  // "Tuần sau" — dùng lại getNextWeekInfo() dùng chung trong lib/week.ts (cùng hàm mà
+  // isTrongKhungSuaFull dùng để xác định khung sửa full của Kế hoạch), không tự tính tay ở đây
+  // nữa để tránh 2 nơi lệch logic vắt năm.
   const defaultNamTuan = useMemo(() => {
     if (isBaoCao) return { nam: namHienTai, tuan: tuanHienTai };
-    let t = tuanHienTai + 1;
-    let n = namHienTai;
-    if (t > isoWeeksInYear(namHienTai)) {
-      t = 1;
-      n = namHienTai + 1;
-    }
-    return { nam: n, tuan: t };
+    return getNextWeekInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBaoCao, isOpen]);
 
   const [modalNam, setModalNam] = useState(defaultNamTuan.nam);
   const [modalTuan, setModalTuan] = useState(defaultNamTuan.tuan);
-  const [noiDung, setNoiDung] = useState("");
-  const [ketQua, setKetQua] = useState("");
+
+  const demNoiDungRef = useRef(0);
+  function taoNoiDungId() {
+    demNoiDungRef.current += 1;
+    return `nd-${demNoiDungRef.current}`;
+  }
+  const [noiDungItems, setNoiDungItems] = useState<NoiDungItem[]>(() => [
+    { id: taoNoiDungId(), value: "", ketQua: "" },
+  ]);
+
   const [ghiChu, setGhiChu] = useState("");
   const [hanXuLy, setHanXuLy] = useState("");
   const [dateKey, setDateKey] = useState(0);
@@ -80,6 +90,7 @@ export default function AddKeHoachBaoCaoPhongModal({
     setShowPhoiHop(false);
     setHanXuLy("");
     setDateKey((k) => k + 1);
+    setNoiDungItems([{ id: taoNoiDungId(), value: "", ketQua: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -102,9 +113,25 @@ export default function AddKeHoachBaoCaoPhongModal({
     setHanXuLy(dateStr);
   }, []);
 
+  function themNoiDungItem() {
+    setNoiDungItems((items) => [...items, { id: taoNoiDungId(), value: "", ketQua: "" }]);
+  }
+
+  function xoaNoiDungItem(id: string) {
+    setNoiDungItems((items) => (items.length <= 1 ? items : items.filter((it) => it.id !== id)));
+  }
+
+  function suaNoiDungItem(id: string, value: string) {
+    setNoiDungItems((items) => items.map((it) => (it.id === id ? { ...it, value } : it)));
+  }
+
+  // MỚI — sửa Kết quả CỦA RIÊNG 1 ô (chỉ dùng khi Báo cáo).
+  function suaKetQuaItem(id: string, ketQua: string) {
+    setNoiDungItems((items) => items.map((it) => (it.id === id ? { ...it, ketQua } : it)));
+  }
+
   function resetAndClose() {
-    setNoiDung("");
-    setKetQua("");
+    setNoiDungItems([{ id: taoNoiDungId(), value: "", ketQua: "" }]);
     setGhiChu("");
     setSelectedPhoiHop([]);
     setShowPhoiHop(false);
@@ -115,27 +142,34 @@ export default function AddKeHoachBaoCaoPhongModal({
   }
 
   async function handleSave() {
-    if (!noiDung.trim()) {
+    const itemsHopLe = noiDungItems
+      .map((it) => ({ noiDung: it.value.trim(), ketQua: it.ketQua.trim() }))
+      .filter((it) => it.noiDung.length > 0);
+    if (itemsHopLe.length === 0) {
       setError("Vui lòng nhập nội dung");
       return;
     }
     setIsSubmitting(true);
     setError(null);
     try {
-      await submitKeHoachPhong({
-        nam: modalNam,
-        tuan: modalTuan,
-        loai,
-        noiDung,
-        ketQua,
-        ghiChu,
-        nguoiPhoiHopIds: selectedPhoiHop,
-        hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
-      });
+      for (const it of itemsHopLe) {
+        await submitKeHoachPhong({
+          nam: modalNam,
+          tuan: modalTuan,
+          loai,
+          noiDung: it.noiDung,
+          ketQua: isBaoCao ? it.ketQua : undefined,
+          ghiChu: noiDungItems.length > 1 ? undefined : ghiChu,
+          nguoiPhoiHopIds: selectedPhoiHop,
+          hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
+        });
+      }
       show(
         "success",
         "Đã lưu thành công",
-        `Đã thêm ${isBaoCao ? "báo cáo" : "kế hoạch"} phòng cho Tuần ${modalTuan}, ${modalNam}`
+        itemsHopLe.length > 1
+          ? `Đã thêm ${itemsHopLe.length} ${isBaoCao ? "báo cáo" : "kế hoạch"} phòng cho Tuần ${modalTuan}, ${modalNam}`
+          : `Đã thêm ${isBaoCao ? "báo cáo" : "kế hoạch"} phòng cho Tuần ${modalTuan}, ${modalNam}`
       );
       onAdded();
       resetAndClose();
@@ -149,7 +183,7 @@ export default function AddKeHoachBaoCaoPhongModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={resetAndClose} className="max-w-[640px] p-5 lg:p-10">
+    <Modal isOpen={isOpen} onClose={resetAndClose} className="max-w-[640px] p-5 lg:max-w-[760px] lg:p-10">
       <h4 className="mb-2 text-lg font-medium text-gray-800 dark:text-white/90">
         Thêm {isBaoCao ? "báo cáo" : "kế hoạch"} phòng
       </h4>
@@ -160,7 +194,9 @@ export default function AddKeHoachBaoCaoPhongModal({
         </div>
       )}
 
-      <div className="space-y-5">
+      {/* 1 VÙNG CUỘN DUY NHẤT cho toàn bộ các trường bên dưới — xem giải thích chi tiết ở
+          AddKeHoachBaoCaoModal.tsx (bản cá nhân), áp dụng y hệt ở đây. */}
+      <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-[140px] shrink-0">
             <Label>Tuần</Label>
@@ -216,36 +252,90 @@ export default function AddKeHoachBaoCaoPhongModal({
           />
         )}
 
+        {/* MỚI — cho phép nhân nhiều ô Nội dung, giống bản cá nhân: mỗi ô là 1 bản ghi riêng khi
+            lưu, dùng chung Tuần/Hạn xử lý/Người phối hợp/Ghi chú. Với Báo cáo: mỗi Nội dung đi
+            kèm ĐÚNG 1 Kết quả riêng, nằm chung 1 hàng — Nội dung 80%, Kết quả 20%. */}
         <div>
-          <Label>
-            Nội dung <span className="text-error-500">*</span>
-          </Label>
-          <textarea
-            value={noiDung}
-            onChange={(e) => setNoiDung(e.target.value)}
-            rows={3}
-            className="h-auto w-full resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            placeholder={
-              isBaoCao ? "Đã thực hiện công việc gì..." : "Dự kiến thực hiện công việc gì..."
-            }
-          />
+          <div className="mb-1.5 flex items-center justify-between">
+            {isBaoCao ? (
+              <div className={`flex flex-1 gap-2 ${noiDungItems.length > 1 ? "pl-7" : ""}`}>
+                <div className="flex-[4]">
+                  <Label>
+                    Nội dung <span className="text-error-500">*</span>
+                  </Label>
+                </div>
+                <div className="flex-1">
+                  <Label>Kết quả</Label>
+                </div>
+              </div>
+            ) : (
+              <Label>
+                Nội dung <span className="text-error-500">*</span>
+              </Label>
+            )}
+            <button
+              type="button"
+              onClick={themNoiDungItem}
+              className="ml-2 flex shrink-0 items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+            >
+              <span className="text-base leading-none">+</span> Thêm nội dung
+            </button>
+          </div>
+          <div className="space-y-2">
+            {noiDungItems.map((item, idx) => (
+              <div key={item.id} className="flex items-start gap-2">
+                {noiDungItems.length > 1 && (
+                  <span className="mt-2.5 w-5 shrink-0 text-right text-sm text-gray-700 dark:text-gray-300">
+                    {idx + 1}.
+                  </span>
+                )}
+                {isBaoCao ? (
+                  <div className="flex flex-1 gap-2">
+                    <textarea
+                      value={item.value}
+                      onChange={(e) => suaNoiDungItem(item.id, e.target.value)}
+                      rows={3}
+                      className="h-auto flex-[4] resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      placeholder="Đã thực hiện công việc gì..."
+                    />
+                    <textarea
+                      value={item.ketQua}
+                      onChange={(e) => suaKetQuaItem(item.id, e.target.value)}
+                      rows={3}
+                      className="h-auto flex-1 resize-y rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      placeholder="Kết quả..."
+                    />
+                  </div>
+                ) : (
+                  <textarea
+                    value={item.value}
+                    onChange={(e) => suaNoiDungItem(item.id, e.target.value)}
+                    rows={3}
+                    className="h-auto w-full resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    placeholder="Dự kiến thực hiện công việc gì..."
+                  />
+                )}
+                {noiDungItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => xoaNoiDungItem(item.id)}
+                    title="Bỏ nội dung này"
+                    className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-error-600 dark:hover:bg-white/5 dark:hover:text-error-400"
+                  >
+                    <span className="text-lg leading-none">−</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {isBaoCao && (
+        {noiDungItems.length <= 1 && (
           <div>
-            <Label>Kết quả</Label>
-            <Input
-              value={ketQua}
-              onChange={(e) => setKetQua(e.target.value)}
-              placeholder="VD: Đã hoàn thành, đạt yêu cầu..."
-            />
+            <Label>Ghi chú</Label>
+            <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
           </div>
         )}
-
-        <div>
-          <Label>Ghi chú</Label>
-          <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
-        </div>
       </div>
 
       <div className="flex items-center justify-end w-full gap-3 mt-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
@@ -21,6 +21,14 @@ import { LoaiGhiNhan } from "@prisma/client";
 import { useToast } from "./ToastProvider";
 
 type NhanVien = { maNV: string; hoTen: string; maPhong: string };
+
+// MỘT Ô "Nội dung" trong form — `id` ở đây CHỈ LÀ KHOÁ TẠM DÙNG TRONG REACT (key + để biết ô nào
+// bị xoá khi bấm "−"), KHÔNG PHẢI id bản ghi trong DB. Mỗi ô, khi lưu, sẽ trở thành 1 LẦN GỌI
+// submitKeHoachCaNhan RIÊNG -> 1 bản ghi độc lập với id thật do DB tự sinh.
+// `ketQua` CHỈ có ý nghĩa khi loai=BAOCAO — mỗi Nội dung đi kèm ĐÚNG 1 Kết quả riêng của nó (không
+// còn 1 ô Kết quả DÙNG CHUNG cho mọi Nội dung như trước), vì thực tế Kết quả luôn mô tả cho ĐÚNG
+// nội dung công việc tương ứng, không phải cho cả nhóm nội dung gộp lại.
+type NoiDungItem = { id: string; value: string; ketQua: string };
 
 export default function AddKeHoachBaoCaoModal({
   isOpen,
@@ -46,8 +54,18 @@ export default function AddKeHoachBaoCaoModal({
 
   const [modalNam, setModalNam] = useState(nam);
   const [modalTuan, setModalTuan] = useState(tuan);
-  const [noiDung, setNoiDung] = useState("");
-  const [ketQua, setKetQua] = useState("");
+
+  // Đếm tăng dần để tạo id tạm cho từng ô Nội dung — không dùng Date.now()/Math.random() vì chỉ
+  // cần duy nhất TRONG PHIÊN MỞ MODAL này, không cần bền vững hơn thế.
+  const demNoiDungRef = useRef(0);
+  function taoNoiDungId() {
+    demNoiDungRef.current += 1;
+    return `nd-${demNoiDungRef.current}`;
+  }
+  const [noiDungItems, setNoiDungItems] = useState<NoiDungItem[]>(() => [
+    { id: taoNoiDungId(), value: "", ketQua: "" },
+  ]);
+
   const [ghiChu, setGhiChu] = useState("");
   // Hạn xử lý — CHỈ có ở Kế hoạch, mặc định để trống (không có hạn). Dùng string "yyyy-mm-dd" —
   // đúng dateFormat mà DatePicker (flatpickr) component có sẵn của dự án đang dùng.
@@ -78,6 +96,9 @@ export default function AddKeHoachBaoCaoModal({
     setShowPhoiHop(false);
     setHanXuLy("");
     setDateKey((k) => k + 1);
+    // Về lại đúng 1 ô Nội dung trống mỗi lần mở modal.
+    setNoiDungItems([{ id: taoNoiDungId(), value: "", ketQua: "" }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, nam, tuan, isBaoCao]);
 
   // Danh sách "Tuần" hiển thị trong modal — KHÔNG còn dropdown "Năm" riêng:
@@ -105,9 +126,27 @@ export default function AddKeHoachBaoCaoModal({
     setHanXuLy(dateStr);
   }, []);
 
+  // Nhân thêm 1 ô Nội dung mới (trống) vào cuối danh sách.
+  function themNoiDungItem() {
+    setNoiDungItems((items) => [...items, { id: taoNoiDungId(), value: "", ketQua: "" }]);
+  }
+
+  // Xoá bớt 1 ô Nội dung theo id — luôn giữ lại tối thiểu 1 ô (không cho xoá hết trơn).
+  function xoaNoiDungItem(id: string) {
+    setNoiDungItems((items) => (items.length <= 1 ? items : items.filter((it) => it.id !== id)));
+  }
+
+  function suaNoiDungItem(id: string, value: string) {
+    setNoiDungItems((items) => items.map((it) => (it.id === id ? { ...it, value } : it)));
+  }
+
+  // MỚI — sửa Kết quả CỦA RIÊNG 1 ô (chỉ dùng khi Báo cáo, mỗi Nội dung có 1 Kết quả đi kèm).
+  function suaKetQuaItem(id: string, ketQua: string) {
+    setNoiDungItems((items) => items.map((it) => (it.id === id ? { ...it, ketQua } : it)));
+  }
+
   function resetAndClose() {
-    setNoiDung("");
-    setKetQua("");
+    setNoiDungItems([{ id: taoNoiDungId(), value: "", ketQua: "" }]);
     setGhiChu("");
     setChuyenThanhPhong(!isBaoCao);
     setSelectedPhoiHop([]);
@@ -119,28 +158,40 @@ export default function AddKeHoachBaoCaoModal({
   }
 
   async function handleSave() {
-    if (!noiDung.trim()) {
+    // Chỉ giữ lại những ô có nội dung thực sự (bỏ qua ô trống, VD ô vừa nhân ra chưa kịp gõ gì) —
+    // mỗi ô hợp lệ sẽ trở thành 1 bản ghi riêng khi lưu, ĐI KÈM ĐÚNG Kết quả của chính ô đó (nếu là
+    // Báo cáo).
+    const itemsHopLe = noiDungItems
+      .map((it) => ({ noiDung: it.value.trim(), ketQua: it.ketQua.trim() }))
+      .filter((it) => it.noiDung.length > 0);
+    if (itemsHopLe.length === 0) {
       setError("Vui lòng nhập nội dung");
       return;
     }
     setIsSubmitting(true);
     setError(null);
     try {
-      await submitKeHoachCaNhan({
-        nam: modalNam,
-        tuan: modalTuan,
-        loai,
-        noiDung,
-        ketQua,
-        ghiChu,
-        nguoiPhoiHopIds: selectedPhoiHop,
-        danhDauLaCuaPhong: chuyenThanhPhong,
-        hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
-      });
+      // Gọi TUẦN TỰ (không Promise.all) — tránh dội quá nhiều request cùng lúc, và nếu 1 lần lưu
+      // lỗi giữa chừng thì dừng lại ngay, không tiếp tục tạo thêm các dòng sau.
+      for (const it of itemsHopLe) {
+        await submitKeHoachCaNhan({
+          nam: modalNam,
+          tuan: modalTuan,
+          loai,
+          noiDung: it.noiDung,
+          ketQua: isBaoCao ? it.ketQua : undefined,
+          ghiChu: noiDungItems.length > 1 ? undefined : ghiChu,
+          nguoiPhoiHopIds: selectedPhoiHop,
+          danhDauLaCuaPhong: chuyenThanhPhong,
+          hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
+        });
+      }
       show(
         "success",
         "Đã lưu thành công",
-        `Đã thêm ${isBaoCao ? "báo cáo" : "kế hoạch"} cho Tuần ${modalTuan}, ${modalNam}`
+        itemsHopLe.length > 1
+          ? `Đã thêm ${itemsHopLe.length} ${isBaoCao ? "báo cáo" : "kế hoạch"} cho Tuần ${modalTuan}, ${modalNam}`
+          : `Đã thêm ${isBaoCao ? "báo cáo" : "kế hoạch"} cho Tuần ${modalTuan}, ${modalNam}`
       );
       onAdded();
       resetAndClose();
@@ -154,7 +205,7 @@ export default function AddKeHoachBaoCaoModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={resetAndClose} className="max-w-[640px] p-5 lg:p-10">
+    <Modal isOpen={isOpen} onClose={resetAndClose} className="max-w-[640px] p-5 lg:max-w-[760px] lg:p-10">
       <h4 className="mb-2 text-lg font-medium text-gray-800 dark:text-white/90">
         Thêm {isBaoCao ? "báo cáo" : "kế hoạch"}
       </h4>
@@ -165,7 +216,13 @@ export default function AddKeHoachBaoCaoModal({
         </div>
       )}
 
-      <div className="space-y-5">
+      {/* 1 VÙNG CUỘN DUY NHẤT cho toàn bộ các trường bên dưới (Tuần/Hạn xử lý/Người phối hợp/Nội
+          dung.../Ghi chú/checkbox) — footer Huỷ/Lưu nằm NGOÀI vùng này nên luôn cố định, không bị
+          cuộn theo. Trước đây chỉ có RIÊNG khung Nội dung tự cuộn (max-h-45vh) — khi mở thêm Người
+          phối hợp (thêm hẳn 1 khối cao) CỘNG với nhiều ô Nội dung, tổng chiều cao vượt màn hình mà
+          bản thân Modal không tự cuộn -> layout bị vỡ/đè lên footer. Gộp lại 1 vùng cuộn ở NGOÀI
+          CÙNG giải quyết dứt điểm, không phụ thuộc tổ hợp trường nào đang mở.*/}
+      <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
         {/* Bỏ khung tô màu + câu hỏi "Nhập ... cho tuần nào?" — Tuần / Hạn xử lý / nút Thêm người
             phối hợp nằm CHUNG 1 HÀNG, cùng chiều cao (mỗi cột chỉ có "label + control", KHÔNG kèm
             caption phụ bên trong để items-end canh đều nhau — caption "Từ ngày..." dời xuống dưới
@@ -226,36 +283,95 @@ export default function AddKeHoachBaoCaoModal({
           />
         )}
 
+        {/* MỚI — cho phép nhân nhiều ô Nội dung: bấm "+ Thêm nội dung" để nhân thêm 1 ô, mỗi ô sẽ
+            trở thành 1 bản ghi RIÊNG khi lưu (cùng chung Tuần/Hạn xử lý/Người phối hợp/Ghi chú/
+            checkbox bên dưới). Ô đầu tiên không có nút "−" (luôn phải còn lại ít nhất 1 ô).
+            Với Báo cáo: mỗi Nội dung đi kèm ĐÚNG 1 Kết quả riêng, nằm CHUNG 1 HÀNG — Nội dung
+            chiếm 80%, Kết quả chiếm 20% (đúng cặp 1-1, không còn 1 ô Kết quả dùng chung nữa). */}
         <div>
-          <Label>
-            Nội dung <span className="text-error-500">*</span>
-          </Label>
-          <textarea
-            value={noiDung}
-            onChange={(e) => setNoiDung(e.target.value)}
-            rows={3}
-            className="h-auto w-full resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            placeholder={
-              isBaoCao ? "Đã thực hiện công việc gì..." : "Dự kiến thực hiện công việc gì..."
-            }
-          />
+          <div className="mb-1.5 flex items-center justify-between">
+            {isBaoCao ? (
+              <div className={`flex flex-1 gap-2 ${noiDungItems.length > 1 ? "pl-7" : ""}`}>
+                <div className="flex-[4]">
+                  <Label>
+                    Nội dung <span className="text-error-500">*</span>
+                  </Label>
+                </div>
+                <div className="flex-1">
+                  <Label>Kết quả</Label>
+                </div>
+              </div>
+            ) : (
+              <Label>
+                Nội dung <span className="text-error-500">*</span>
+              </Label>
+            )}
+            <button
+              type="button"
+              onClick={themNoiDungItem}
+              className="ml-2 flex shrink-0 items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+            >
+              <span className="text-base leading-none">+</span> Thêm nội dung
+            </button>
+          </div>
+          <div className="space-y-2">
+            {noiDungItems.map((item, idx) => (
+              <div key={item.id} className="flex items-start gap-2">
+                {noiDungItems.length > 1 && (
+                  <span className="mt-2.5 w-5 shrink-0 text-right text-sm text-gray-700 dark:text-gray-300">
+                    {idx + 1}.
+                  </span>
+                )}
+                {isBaoCao ? (
+                  <div className="flex flex-1 gap-2">
+                    <textarea
+                      value={item.value}
+                      onChange={(e) => suaNoiDungItem(item.id, e.target.value)}
+                      rows={3}
+                      className="h-auto flex-[4] resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      placeholder="Đã thực hiện công việc gì..."
+                    />
+                    <textarea
+                      value={item.ketQua}
+                      onChange={(e) => suaKetQuaItem(item.id, e.target.value)}
+                      rows={3}
+                      className="h-auto flex-1 resize-y rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      placeholder="Kết quả..."
+                    />
+                  </div>
+                ) : (
+                  <textarea
+                    value={item.value}
+                    onChange={(e) => suaNoiDungItem(item.id, e.target.value)}
+                    rows={3}
+                    className="h-auto w-full resize-y rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    placeholder="Dự kiến thực hiện công việc gì..."
+                  />
+                )}
+                {noiDungItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => xoaNoiDungItem(item.id)}
+                    title="Bỏ nội dung này"
+                    className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-error-600 dark:hover:bg-white/5 dark:hover:text-error-400"
+                  >
+                    <span className="text-lg leading-none">−</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {isBaoCao && (
+        {/* MỚI — Ghi chú CHỈ hiện khi đang có ĐÚNG 1 dòng Nội dung. Một khi đã nhân thêm (≥2 dòng),
+            Ghi chú dùng chung cho nhiều bản ghi khác nhau không còn hợp lý nữa nên ẩn hẳn đi, tránh
+            hiểu nhầm là ghi chú riêng cho từng dòng. */}
+        {noiDungItems.length <= 1 && (
           <div>
-            <Label>Kết quả</Label>
-            <Input
-              value={ketQua}
-              onChange={(e) => setKetQua(e.target.value)}
-              placeholder="VD: Đã hoàn thành, đạt yêu cầu..."
-            />
+            <Label>Ghi chú</Label>
+            <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
           </div>
         )}
-
-        <div>
-          <Label>Ghi chú</Label>
-          <Input value={ghiChu} onChange={(e) => setGhiChu(e.target.value)} />
-        </div>
 
         {/* Trước đây checkbox này CHỈ hiện cho Kế hoạch — nay hiện cho cả Báo cáo (nhãn đổi theo
             loại), nhưng mặc định TẮT với Báo cáo (khác Kế hoạch mặc định BẬT) vì tính năng "Báo

@@ -12,6 +12,11 @@ import { useToast } from "./ToastProvider";
 // sửa được Kết quả/Ghi chú. Áp dụng đồng thời cho cả Kế hoạch lẫn Báo cáo, Cá nhân lẫn Phòng, vì cả
 // 4 nơi đều dùng chung đúng 1 component này. Nội dung gốc vẫn hiển thị (khi sửa 1 dòng) dạng CHỈ
 // ĐỌC để người dùng biết đang cập nhật đúng mục nào, không có ô nhập liệu nào cho nó nữa.
+//
+// LƯU Ý: modal này LUÔN hiện qua menu "📝 Cập nhật kết quả/ghi chú" (không điều kiện gì). Việc sửa
+// Nội dung/Người phối hợp/Hạn xử lý theo khung tuần nằm ở modal RIÊNG — SuaNoiDungModal.tsx — chỉ
+// hiện khi trong khung cho phép. 2 modal này độc lập, không dùng chung component để tránh 1 modal
+// gánh quá nhiều nhánh điều kiện.
 export default function UpdateResultModal({
   isOpen,
   onClose,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
 import { LoaiGhiNhan } from "@prisma/client";
+import { isTrongKhungSuaFull } from "@/lib/week";
 
 // ==========================================================================================
 // ====================                  ĐỌC THÊM                        =================
@@ -18,9 +19,20 @@ import { LoaiGhiNhan } from "@prisma/client";
 // - "Loại khỏi phòng" = set laCuaPhong=false, laCuaCaNhan=true — không phân biệt dòng đó vốn dĩ có
 //   mặt ở cá nhân hay không (khác hẳn 2 nhánh TH1/TH2 phức tạp ở bản cũ).
 // - Mọi query đều phải lọc isDeleted:false (soft-delete, không xoá vật lý nữa).
+//
+// LƯU Ý QUAN TRỌNG (đợt sửa này): TUYỆT ĐỐI KHÔNG đổi chữ ký/hành vi của bất kỳ hàm export nào đã
+// có sẵn ở dưới — các hàm này đang được gọi ở nhiều chức năng khác trong phần mềm. Mọi tính năng
+// mới (sửa full theo khung tuần, xoá theo người tạo trong ngày) đều nằm ở 2 HÀM MỚI THÊM VÀO CUỐI
+// FILE (suaFullKeHoachBaoCao, xoaKeHoachBaoCao) — không chèn logic mới vào giữa các hàm cũ.
 
 export type KeHoachRow = {
   id: number;
+  // MỚI — bổ sung thêm 2 field so với bản gốc (thuần ĐỌC, không đổi cách map các field khác):
+  // dùng để client tự xác định "khung sửa full"/"trong ngày nhập" theo ĐÚNG tuần/ngày CỦA DÒNG ĐÓ,
+  // không phụ thuộc tuần đang xem trên board. Chỉ CỘNG THÊM field vào object trả về — không đổi ý
+  // nghĩa hay format của bất kỳ field nào đã có, nên không ảnh hưởng chỗ gọi cũ.
+  nam: number;
+  tuan: number;
   noiDung: string;
   ketQua: string | null;
   ghiChu: string | null;
@@ -63,6 +75,8 @@ type RowWithIncludes = Awaited<ReturnType<typeof prisma.keHoachTuan.findFirstOrT
 function mapRow(r: RowWithIncludes): KeHoachRow {
   return {
     id: r.id,
+    nam: r.nam,
+    tuan: r.tuan,
     noiDung: r.noiDung,
     ketQua: r.ketQua,
     ghiChu: r.ghiChu,
@@ -277,6 +291,9 @@ export async function markHoanThanh(ids: number[], value: boolean) {
 // không dùng null cho "không đổi" được).
 // TRƯỚC ĐÂY: phải updateMany thêm 1 lần nữa cho dòng con (nguonId). NAY: chỉ 1 lần updateMany duy
 // nhất, vì Kết quả/Ghi chú của "bản Phòng" và "bản Cá nhân" giờ LÀ CÙNG 1 CỘT DỮ LIỆU.
+// KHÔNG ĐỔI — giữ NGUYÊN VĂN hàm này so với bản gốc (nhiều chức năng khác đang gọi). Tính năng
+// "sửa full" (Nội dung/Người phối hợp/Hạn xử lý theo khung tuần) nằm RIÊNG ở hàm
+// suaFullKeHoachBaoCao phía cuối file — KHÔNG đụng vào hàm này.
 export async function updateKetQuaGhiChu(
   ids: number[],
   params: {
@@ -385,6 +402,104 @@ export async function loaiKhoiPhong(id: number) {
       nguoiLoaiKhoiPhongId: user.maNV,
       thoiGianLoaiKhoiPhong: new Date(),
       nguoiCapNhatId: user.maNV,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true };
+}
+
+// ==========================================================================================
+// ====================         2 HÀM MỚI — KHÔNG ĐỤNG GÌ CÁC HÀM Ở TRÊN          ===========
+// ==========================================================================================
+
+// ==================== [MỚI] SỬA FULL (Nội dung + Người phối hợp + Hạn xử lý) ====================
+// Tách hẳn khỏi updateKetQuaGhiChu (không đổi hàm đó, xem lưu ý ở đầu file). Hàm này CHỈ được dùng
+// cho đúng 1 dòng (không hàng loạt), và CHỈ thành công khi (nam, tuan) THẬT của dòng đó (đọc lại từ
+// DB, không tin client) đang nằm trong khung cho phép — xem isTrongKhungSuaFull() ở lib/week.ts:
+//   - loai = BAOCAO  -> đúng tuần hiện tại thực
+//   - loai = KEHOACH -> đúng tuần kế tiếp tuần hiện tại thực
+// hanXuLy: bỏ qua (không set) nếu dòng không phải Kế hoạch, dù client có lỡ gửi lên.
+export async function suaFullKeHoachBaoCao(
+  id: number,
+  params: {
+    noiDung: string;
+    nguoiPhoiHopIds: string[];
+    hanXuLy?: Date | null;
+  }
+) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+
+  if (!isTrongKhungSuaFull(row.loai, row.nam, row.tuan)) {
+    throw new Error(
+      "Chỉ được sửa đầy đủ Nội dung/Người phối hợp/Hạn xử lý đúng trong khung tuần cho phép (Báo cáo: tuần hiện tại; Kế hoạch: tuần kế tiếp tuần hiện tại)"
+    );
+  }
+
+  const noiDung = params.noiDung.trim();
+  if (!noiDung) throw new Error("Nội dung không được để trống");
+
+  const data: { noiDung: string; nguoiCapNhatId: string; hanXuLy?: Date | null } = {
+    noiDung,
+    nguoiCapNhatId: user.maNV,
+  };
+  // Hạn xử lý chỉ có ý nghĩa với Kế hoạch — dù client có gửi hanXuLy lên cho 1 dòng Báo cáo thì
+  // cũng bỏ qua, không set.
+  if (row.loai === "KEHOACH" && params.hanXuLy !== undefined) {
+    data.hanXuLy = params.hanXuLy;
+  }
+
+  await prisma.$transaction([
+    prisma.keHoachTuan.update({ where: { id }, data }),
+    prisma.keHoachTuanPhoiHop.deleteMany({ where: { keHoachTuanId: id } }),
+    ...(params.nguoiPhoiHopIds.length > 0
+      ? [
+          prisma.keHoachTuanPhoiHop.createMany({
+            data: params.nguoiPhoiHopIds.map((maNV) => ({ keHoachTuanId: id, maNV })),
+          }),
+        ]
+      : []),
+  ]);
+
+  revalidateAllLienQuan();
+  return { success: true };
+}
+
+// ==================== [MỚI] XOÁ — theo NGƯỜI TẠO, CHỈ trong ĐÚNG NGÀY vừa nhập ==================
+// Quy tắc: chỉ chính người đã tạo (row.maNV === người đang đăng nhập) mới được xoá, và chỉ xoá được
+// khi taoLuc của dòng đó rơi vào ĐÚNG NGÀY HÔM NAY (theo giờ hệ thống lúc gọi hàm này — server-side,
+// không tin ngày giờ gửi từ client). Qua khỏi ngày hôm đó (kể cả mới sang 00:00 một chút) là không
+// xoá được nữa. Dùng soft-delete (isDeleted/xoaLuc/nguoiXoaId) — đúng cơ chế xoá đã có sẵn trong
+// schema (KHÔNG xoá vật lý), nhất quán với mọi nơi khác trong hệ thống đều lọc isDeleted:false.
+export async function xoaKeHoachBaoCao(id: number) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+
+  if (row.maNV !== user.maNV) {
+    throw new Error("Bạn chỉ được xoá dòng do chính mình nhập");
+  }
+
+  const taoLuc = new Date(row.taoLuc);
+  const now = new Date();
+  const cungNgay =
+    taoLuc.getFullYear() === now.getFullYear() &&
+    taoLuc.getMonth() === now.getMonth() &&
+    taoLuc.getDate() === now.getDate();
+  if (!cungNgay) {
+    throw new Error("Chỉ được xoá trong đúng ngày vừa nhập — dòng này đã qua ngày khác");
+  }
+
+  await prisma.keHoachTuan.update({
+    where: { id },
+    data: {
+      isDeleted: true,
+      xoaLuc: new Date(),
+      nguoiXoaId: user.maNV,
     },
   });
 
