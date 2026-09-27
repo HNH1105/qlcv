@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
@@ -10,6 +10,7 @@ import { suaFullKeHoachBaoCao } from "@/lib/actions/ke-hoach";
 import { useToast } from "./ToastProvider";
 
 type PhoiHopOption = { value: string; text: string };
+type NhanVien = { maNV: string; hoTen: string; maPhong: string };
 
 // Chuẩn hoá 1 Date thành string "yyyy-mm-dd" — đúng dateFormat mà DatePicker (flatpickr) đang
 // dùng. Dùng phần UTC (giống cách hanXuLy được lưu/hiển thị ở nơi khác trong dự án) để tránh lệch
@@ -26,9 +27,9 @@ function toDateInputValue(d: Date): string {
 // (xem isTrongKhungSuaFull trong lib/week.ts, do component cha KehoachBaoCaoItemCard tự tính và
 // quyết định có render nút mở modal này hay không).
 //
-// Modal này CHỈ có 3 thứ: Nội dung, Hạn xử lý (chỉ Kế hoạch mới có), Người phối hợp — KHÔNG có Kết
-// quả/Ghi chú/Tiến độ (3 cái đó vẫn sửa qua modal "Cập nhật kết quả/ghi chú" — UpdateResultModal —
-// như cũ, menu đó luôn hiện, không phụ thuộc khung tuần).
+// Modal này CHỈ có 3 thứ: Nội dung, Hạn xử lý (chỉ Kế hoạch mới có), Người phối hợp + Phòng phối
+// hợp — KHÔNG có Kết quả/Ghi chú/Tiến độ (3 cái đó vẫn sửa qua modal "Cập nhật kết quả/ghi chú" —
+// UpdateResultModal — như cũ, menu đó luôn hiện, không phụ thuộc khung tuần).
 //
 // Chỉ áp dụng cho ĐÚNG 1 dòng — không có chế độ hàng loạt.
 //
@@ -45,7 +46,11 @@ export default function SuaNoiDungModal({
   showHanXuLy,
   currentHanXuLy,
   currentNguoiPhoiHopIds,
-  nhanVienOptions,
+  // MỚI — nhận RAW danh sách nhân viên (đã loại chính mình từ phía cha) thay vì options đã lọc sẵn
+  // theo 1 phòng cố định, để tự tính lại danh sách Người phối hợp mỗi khi Phòng phối hợp thay đổi
+  // (nạp thêm thành viên của phòng vừa chọn, cộng dồn với phòng chủ — xem nhanVienOptions bên dưới).
+  nhanVienList,
+  ownMaPhong,
   // MỚI — Phòng phối hợp: cùng cơ chế với Người phối hợp ở trên.
   currentMaPhongPhoiHop,
   dsPhongOptions,
@@ -58,7 +63,8 @@ export default function SuaNoiDungModal({
   showHanXuLy: boolean;
   currentHanXuLy?: Date | null;
   currentNguoiPhoiHopIds: string[];
-  nhanVienOptions: PhoiHopOption[];
+  nhanVienList: NhanVien[];
+  ownMaPhong?: string;
   currentMaPhongPhoiHop: string[];
   dsPhongOptions: PhoiHopOption[];
   onUpdated: () => void;
@@ -93,6 +99,17 @@ export default function SuaNoiDungModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentNoiDung, currentHanXuLy, currentNguoiPhoiHopIds, currentMaPhongPhoiHop]);
 
+  // MỚI — Người phối hợp: mặc định là đồng nghiệp cùng phòng chủ (ownMaPhong), CỘNG DỒN thêm thành
+  // viên của (các) Phòng phối hợp đang chọn (phongPhoiHop) — y hệt cách tính ở 2 modal Thêm mới,
+  // để chọn "Sửa" cũng nhất quán: chọn thêm Phòng phối hợp là thấy ngay người của phòng đó xuất
+  // hiện trong danh sách Người phối hợp bên dưới.
+  const nhanVienOptions = useMemo(() => {
+    const dsMaPhongDuocChon = new Set([ownMaPhong, ...phongPhoiHop]);
+    return nhanVienList
+      .filter((nv) => dsMaPhongDuocChon.has(nv.maPhong))
+      .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
+  }, [nhanVienList, ownMaPhong, phongPhoiHop]);
+
   const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
     setHanXuLy(dateStr);
   }, []);
@@ -124,8 +141,8 @@ export default function SuaNoiDungModal({
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[584px] p-5 lg:max-w-[700px] lg:p-10">
       <h4 className="mb-4 text-lg font-medium text-gray-800 dark:text-white/90">Sửa</h4>
 
-      {/* Sắp xếp gọn: Nội dung trước (chiếm phần lớn không gian), Hạn xử lý + 2 nút "Thêm người/
-          phòng phối hợp" nằm chung 1 hàng ngay dưới cho gọn (giống bố cục ở modal Thêm mới), chỉ
+      {/* Sắp xếp gọn: Nội dung trước (chiếm phần lớn không gian), Hạn xử lý + 2 nút "Thêm phòng/
+          người phối hợp" nằm chung 1 hàng ngay dưới cho gọn (giống bố cục ở modal Thêm mới), chỉ
           khi cần mới hiện khối chọn đầy đủ bên dưới — mỗi khối có nút "✕ Bỏ" riêng để ẩn lại. */}
       <div className="space-y-4">
         <div>
@@ -154,16 +171,8 @@ export default function SuaNoiDungModal({
             </div>
           )}
 
-          {!showPhoiHop && (
-            <button
-              type="button"
-              onClick={() => setShowPhoiHop(true)}
-              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
-            >
-              <span className="text-base leading-none">+</span> Thêm người phối hợp
-            </button>
-          )}
-
+          {/* MỚI — "Thêm phòng phối hợp" đứng TRƯỚC "Thêm người phối hợp", khớp thứ tự ở 2 modal
+              Thêm mới: chọn phòng trước để thấy ngay danh sách người cập nhật thêm bên dưới. */}
           {!showPhongPhoiHop && (
             <button
               type="button"
@@ -173,7 +182,40 @@ export default function SuaNoiDungModal({
               <span className="text-base leading-none">+</span> Thêm phòng phối hợp
             </button>
           )}
+
+          {!showPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm người phối hợp
+            </button>
+          )}
         </div>
+
+        {/* LƯU Ý: nút "✕ Bỏ" PHẢI có z-10 — nếu không, label của NguoiPhoiHopSelect (render SAU
+            trong DOM, cùng nằm ở góc trên) sẽ đè lên trên và chặn mất click. */}
+        {showPhongPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhongPhoiHop(false);
+                setPhongPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Phòng phối hợp (không bắt buộc)"
+              options={dsPhongOptions}
+              selected={phongPhoiHop}
+              onChange={setPhongPhoiHop}
+            />
+          </div>
+        )}
 
         {showPhoiHop && (
           <div className="relative">
@@ -183,7 +225,7 @@ export default function SuaNoiDungModal({
                 setShowPhoiHop(false);
                 setPhoiHop([]);
               }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
             >
               ✕ Bỏ
             </button>
@@ -192,27 +234,6 @@ export default function SuaNoiDungModal({
               options={nhanVienOptions}
               selected={phoiHop}
               onChange={setPhoiHop}
-            />
-          </div>
-        )}
-
-        {showPhongPhoiHop && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setShowPhongPhoiHop(false);
-                setPhongPhoiHop([]);
-              }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
-            >
-              ✕ Bỏ
-            </button>
-            <NguoiPhoiHopSelect
-              label="Phòng phối hợp (không bắt buộc)"
-              options={dsPhongOptions}
-              selected={phongPhoiHop}
-              onChange={setPhongPhoiHop}
             />
           </div>
         )}

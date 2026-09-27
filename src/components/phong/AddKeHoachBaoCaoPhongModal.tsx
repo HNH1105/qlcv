@@ -110,14 +110,16 @@ export default function AddKeHoachBaoCaoPhongModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBaoCao, modalNam, isOpen]);
 
-  // Người phối hợp: vẫn lọc theo cùng phòng — ở cấp Phòng có thể phối hợp với bất kỳ đồng nghiệp
-  // nào khác trong phòng (không loại trừ ai theo maNV như bên cá nhân, vì đây không phải "của
-  // riêng" người tạo — chỉ loại chính người đang đăng nhập ra khỏi danh sách để không tự chọn mình).
+  // Người phối hợp: mặc định lọc theo cùng phòng — ở cấp Phòng có thể phối hợp với bất kỳ đồng
+  // nghiệp nào khác trong phòng (không loại trừ ai theo maNV như bên cá nhân, vì đây không phải
+  // "của riêng" người tạo — chỉ loại chính người đang đăng nhập ra khỏi danh sách để không tự chọn
+  // mình). MỚI: nạp thêm thành viên của (các) Phòng phối hợp đã chọn, cộng dồn với phòng mặc định.
   const nhanVienOptions = useMemo(() => {
+    const dsMaPhongDuocChon = new Set([user?.maPhong, ...selectedPhongPhoiHop]);
     return nhanVienList
-      .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
+      .filter((nv) => nv.maNV !== user?.maNV && dsMaPhongDuocChon.has(nv.maPhong))
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
-  }, [nhanVienList, user?.maNV, user?.maPhong]);
+  }, [nhanVienList, user?.maNV, user?.maPhong, selectedPhongPhoiHop]);
 
   // MỚI — loại trừ chính phòng của người đang đăng nhập khỏi lựa chọn Phòng phối hợp.
   const dsPhongOptions = useMemo(() => {
@@ -249,16 +251,6 @@ export default function AddKeHoachBaoCaoPhongModal({
             </div>
           )}
 
-          {!showPhoiHop && (
-            <button
-              type="button"
-              onClick={() => setShowPhoiHop(true)}
-              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
-            >
-              <span className="text-base leading-none">+</span> Thêm người phối hợp
-            </button>
-          )}
-
           {!showPhongPhoiHop && (
             <button
               type="button"
@@ -268,31 +260,20 @@ export default function AddKeHoachBaoCaoPhongModal({
               <span className="text-base leading-none">+</span> Thêm phòng phối hợp
             </button>
           )}
+
+          {!showPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm người phối hợp
+            </button>
+          )}
         </div>
         <p className="-mt-3 text-xs text-gray-400">
           Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
         </p>
-
-        {showPhoiHop && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setShowPhoiHop(false);
-                setSelectedPhoiHop([]);
-              }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
-            >
-              ✕ Bỏ
-            </button>
-            <NguoiPhoiHopSelect
-              label="Người phối hợp (không bắt buộc)"
-              options={nhanVienOptions}
-              selected={selectedPhoiHop}
-              onChange={setSelectedPhoiHop}
-            />
-          </div>
-        )}
 
         {showPhongPhoiHop && (
           <div className="relative">
@@ -302,7 +283,7 @@ export default function AddKeHoachBaoCaoPhongModal({
                 setShowPhongPhoiHop(false);
                 setSelectedPhongPhoiHop([]);
               }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
             >
               ✕ Bỏ
             </button>
@@ -311,6 +292,27 @@ export default function AddKeHoachBaoCaoPhongModal({
               options={dsPhongOptions}
               selected={selectedPhongPhoiHop}
               onChange={setSelectedPhongPhoiHop}
+            />
+          </div>
+        )}
+
+        {showPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhoiHop(false);
+                setSelectedPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Người phối hợp (không bắt buộc)"
+              options={nhanVienOptions}
+              selected={selectedPhoiHop}
+              onChange={setSelectedPhoiHop}
             />
           </div>
         )}

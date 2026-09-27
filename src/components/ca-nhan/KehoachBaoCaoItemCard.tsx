@@ -91,11 +91,12 @@ export default function KeHoachBaoCaoItemCard({
     }
   }, [isSuaOpen, canEditFull, nhanVienList.length, dsPhong.length]);
 
-  const nhanVienOptions = useMemo(() => {
-    return nhanVienList
-      .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
-      .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
-  }, [nhanVienList, user?.maNV, user?.maPhong]);
+  // MỚI — chỉ loại chính người dùng ra, KHÔNG lọc theo 1 phòng cố định nữa (khác trước) — để
+  // SuaNoiDungModal tự tính lại danh sách Người phối hợp mỗi khi Phòng phối hợp thay đổi (nạp thêm
+  // thành viên của phòng vừa chọn, cộng dồn với phòng chủ user?.maPhong).
+  const nhanVienListChoSua = useMemo(() => {
+    return nhanVienList.filter((nv) => nv.maNV !== user?.maNV);
+  }, [nhanVienList, user?.maNV]);
 
   // MỚI — loại trừ chính phòng của dòng đang sửa (row.laCuaPhong thuộc phòng nào thì lấy
   // user?.maPhong — Kế hoạch/Báo cáo cá nhân luôn thuộc phòng của người tạo, và người mở "Sửa"
@@ -421,7 +422,8 @@ export default function KeHoachBaoCaoItemCard({
           showHanXuLy={isKeHoach}
           currentHanXuLy={row.hanXuLy}
           currentNguoiPhoiHopIds={row.nguoiPhoiHop.map((p) => p.maNV)}
-          nhanVienOptions={nhanVienOptions}
+          nhanVienList={nhanVienListChoSua}
+          ownMaPhong={user?.maPhong}
           currentMaPhongPhoiHop={row.phongPhoiHop.map((p) => p.maPhong)}
           dsPhongOptions={dsPhongOptions}
           onUpdated={onChanged}

@@ -35,7 +35,7 @@ const adminItems: NavItem[] = [
   {
     icon: <UserCircleIcon />,
     name: "Quản lý người dùng",
-    path: "/admin/nguoi-dung",
+    path: "/nguoi-dung",
   },
   {
     icon: <TableIcon />,

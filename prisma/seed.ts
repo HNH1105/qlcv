@@ -753,7 +753,7 @@ const nhanViens: NhanVienSeed[] = [
     quyen: Quyen.USER,
   },
   {
-    maNV: "BT14",
+    maNV: "BT15",
     hoTen: "Phan Quốc Sơn",
     maPhong: "BTXH",
     thuTu: 15,

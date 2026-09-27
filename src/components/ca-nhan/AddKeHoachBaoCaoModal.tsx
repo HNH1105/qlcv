@@ -126,13 +126,17 @@ export default function AddKeHoachBaoCaoModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBaoCao, modalNam, isOpen]);
 
-  // Không cần chọn phòng ban riêng — chỉ hiện đồng nghiệp CÙNG PHÒNG với người đang đăng nhập,
-  // và loại chính mình ra (không thể "phối hợp" với bản thân).
+  // Không cần chọn phòng ban riêng — mặc định chỉ hiện đồng nghiệp CÙNG PHÒNG với người đang đăng
+  // nhập. MỚI: nếu đã chọn thêm Phòng phối hợp nào, NẠP THÊM luôn thành viên của (các) phòng đó vào
+  // danh sách Người phối hợp (cộng dồn với phòng mặc định, không thay thế) — vì khi đã phối hợp với
+  // 1 phòng khác, rất có thể cần chọn đích danh 1 người bên phòng đó luôn. Luôn loại chính mình ra
+  // (không thể "phối hợp" với bản thân).
   const nhanVienOptions = useMemo(() => {
+    const dsMaPhongDuocChon = new Set([user?.maPhong, ...selectedPhongPhoiHop]);
     return nhanVienList
-      .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
+      .filter((nv) => nv.maNV !== user?.maNV && dsMaPhongDuocChon.has(nv.maPhong))
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
-  }, [nhanVienList, user?.maNV, user?.maPhong]);
+  }, [nhanVienList, user?.maNV, user?.maPhong, selectedPhongPhoiHop]);
 
   // MỚI — Danh sách Phòng để chọn "Phòng phối hợp": loại trừ CHÍNH phòng của người đang đăng nhập
   // (không thể "phối hợp" với chính phòng mình) — khớp với validate ở server.
@@ -283,17 +287,9 @@ export default function AddKeHoachBaoCaoModal({
             </div>
           )}
 
-          {!showPhoiHop && (
-            <button
-              type="button"
-              onClick={() => setShowPhoiHop(true)}
-              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
-            >
-              <span className="text-base leading-none">+</span> Thêm người phối hợp
-            </button>
-          )}
-
-          {/* MỚI — nút song song với "Thêm người phối hợp", mở khối chọn Phòng phối hợp. */}
+          {/* MỚI — "Thêm phòng phối hợp" đứng TRƯỚC "Thêm người phối hợp": chọn Phòng phối hợp
+              trước sẽ nạp thêm thành viên của (các) phòng đó vào danh sách Người phối hợp bên
+              dưới, nên hợp lý hơn khi để phòng lên trước về mặt luồng thao tác. */}
           {!showPhongPhoiHop && (
             <button
               type="button"
@@ -303,35 +299,28 @@ export default function AddKeHoachBaoCaoModal({
               <span className="text-base leading-none">+</span> Thêm phòng phối hợp
             </button>
           )}
+
+          {!showPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm người phối hợp
+            </button>
+          )}
         </div>
         <p className="-mt-3 text-xs text-gray-400">
           Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
         </p>
 
-        {/* MỚI — mỗi khối phối hợp (Người/Phòng), khi đang mở, có nút "✕ Bỏ" ở góc trên-phải để
+        {/* MỚI — mỗi khối phối hợp (Phòng/Người), khi đang mở, có nút "✕ Bỏ" ở góc trên-phải để
             ẨN LẠI toàn bộ khối (không chỉ bỏ từng người/phòng đã chọn qua nút "×" trên từng thẻ) —
-            đồng thời xoá sạch lựa chọn đang có, coi như huỷ hẳn ý định phối hợp lần này. */}
-        {showPhoiHop && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setShowPhoiHop(false);
-                setSelectedPhoiHop([]);
-              }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
-            >
-              ✕ Bỏ
-            </button>
-            <NguoiPhoiHopSelect
-              label="Người phối hợp cùng phòng (không bắt buộc)"
-              options={nhanVienOptions}
-              selected={selectedPhoiHop}
-              onChange={setSelectedPhoiHop}
-            />
-          </div>
-        )}
-
+            đồng thời xoá sạch lựa chọn đang có, coi như huỷ hẳn ý định phối hợp lần này.
+            LƯU Ý: nút "✕ Bỏ" PHẢI có z-10 — nếu không, label của NguoiPhoiHopSelect (render SAU
+            trong DOM, cùng nằm ở góc trên) sẽ đè lên trên và chặn mất click, dù nhìn vẫn thấy chữ
+            "✕ Bỏ" bình thường. Khối Phòng phối hợp đặt TRƯỚC khối Người phối hợp, khớp thứ tự 2 nút
+            bên trên — chọn phòng xong sẽ thấy ngay danh sách Người phối hợp cập nhật thêm bên dưới. */}
         {showPhongPhoiHop && (
           <div className="relative">
             <button
@@ -340,7 +329,7 @@ export default function AddKeHoachBaoCaoModal({
                 setShowPhongPhoiHop(false);
                 setSelectedPhongPhoiHop([]);
               }}
-              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
             >
               ✕ Bỏ
             </button>
@@ -349,6 +338,27 @@ export default function AddKeHoachBaoCaoModal({
               options={dsPhongOptions}
               selected={selectedPhongPhoiHop}
               onChange={setSelectedPhongPhoiHop}
+            />
+          </div>
+        )}
+
+        {showPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhoiHop(false);
+                setSelectedPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 z-10 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Người phối hợp cùng phòng (không bắt buộc)"
+              options={nhanVienOptions}
+              selected={selectedPhoiHop}
+              onChange={setSelectedPhoiHop}
             />
           </div>
         )}
