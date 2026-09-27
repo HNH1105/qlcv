@@ -70,6 +70,17 @@ export default function ChiTietModal({
             </div>
           )}
 
+          {/* MỚI — Phòng phối hợp: CHỈ ĐỌC (sửa qua mục "Sửa" trong menu 3 chấm ở card, không sửa
+              được từ trang chi tiết này). Chỉ hiện khi có ít nhất 1 phòng phối hợp. */}
+          {row.phongPhoiHop.length > 0 && (
+            <div>
+              <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Phòng phối hợp</p>
+              <p className="break-words text-gray-800 dark:text-white/90">
+                {row.phongPhoiHop.map((p) => p.tenPhong).join(", ")}
+              </p>
+            </div>
+          )}
+
           {!isBaoCao && (
             <div>
               <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">Trạng thái</p>

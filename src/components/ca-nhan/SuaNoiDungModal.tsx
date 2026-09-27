@@ -46,6 +46,9 @@ export default function SuaNoiDungModal({
   currentHanXuLy,
   currentNguoiPhoiHopIds,
   nhanVienOptions,
+  // MỚI — Phòng phối hợp: cùng cơ chế với Người phối hợp ở trên.
+  currentMaPhongPhoiHop,
+  dsPhongOptions,
   onUpdated,
 }: {
   isOpen: boolean;
@@ -56,6 +59,8 @@ export default function SuaNoiDungModal({
   currentHanXuLy?: Date | null;
   currentNguoiPhoiHopIds: string[];
   nhanVienOptions: PhoiHopOption[];
+  currentMaPhongPhoiHop: string[];
+  dsPhongOptions: PhoiHopOption[];
   onUpdated: () => void;
 }) {
   const { show } = useToast();
@@ -68,6 +73,11 @@ export default function SuaNoiDungModal({
   // flatpickr không tự cập nhật khi defaultDate đổi — dùng key ép remount mỗi lần mở modal.
   const [dateKey, setDateKey] = useState(0);
   const [showPhoiHop, setShowPhoiHop] = useState(currentNguoiPhoiHopIds.length > 0);
+
+  // MỚI — Phòng phối hợp.
+  const [phongPhoiHop, setPhongPhoiHop] = useState<string[]>(currentMaPhongPhoiHop);
+  const [showPhongPhoiHop, setShowPhongPhoiHop] = useState(currentMaPhongPhoiHop.length > 0);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -76,10 +86,12 @@ export default function SuaNoiDungModal({
       setPhoiHop(currentNguoiPhoiHopIds);
       setHanXuLy(currentHanXuLy ? toDateInputValue(new Date(currentHanXuLy)) : "");
       setShowPhoiHop(currentNguoiPhoiHopIds.length > 0);
+      setPhongPhoiHop(currentMaPhongPhoiHop);
+      setShowPhongPhoiHop(currentMaPhongPhoiHop.length > 0);
       setDateKey((k) => k + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, currentNoiDung, currentHanXuLy, currentNguoiPhoiHopIds]);
+  }, [isOpen, currentNoiDung, currentHanXuLy, currentNguoiPhoiHopIds, currentMaPhongPhoiHop]);
 
   const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
     setHanXuLy(dateStr);
@@ -96,6 +108,7 @@ export default function SuaNoiDungModal({
         noiDung,
         nguoiPhoiHopIds: phoiHop,
         hanXuLy: showHanXuLy ? (hanXuLy ? new Date(hanXuLy) : null) : undefined,
+        maPhongPhoiHopIds: phongPhoiHop,
       });
       show("success", "Đã lưu", "Đã cập nhật nội dung");
       onUpdated();
@@ -108,12 +121,12 @@ export default function SuaNoiDungModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[584px] p-5 lg:p-10">
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[584px] p-5 lg:max-w-[700px] lg:p-10">
       <h4 className="mb-4 text-lg font-medium text-gray-800 dark:text-white/90">Sửa</h4>
 
-      {/* Sắp xếp gọn: Nội dung trước (chiếm phần lớn không gian), Hạn xử lý + nút "Thêm người phối
-          hợp" nằm chung 1 hàng ngay dưới cho gọn (giống bố cục ở modal Thêm mới), chỉ khi cần mới
-          hiện khối chọn Người phối hợp đầy đủ bên dưới. */}
+      {/* Sắp xếp gọn: Nội dung trước (chiếm phần lớn không gian), Hạn xử lý + 2 nút "Thêm người/
+          phòng phối hợp" nằm chung 1 hàng ngay dưới cho gọn (giống bố cục ở modal Thêm mới), chỉ
+          khi cần mới hiện khối chọn đầy đủ bên dưới — mỗi khối có nút "✕ Bỏ" riêng để ẩn lại. */}
       <div className="space-y-4">
         <div>
           <Label>
@@ -150,15 +163,58 @@ export default function SuaNoiDungModal({
               <span className="text-base leading-none">+</span> Thêm người phối hợp
             </button>
           )}
+
+          {!showPhongPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhongPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm phòng phối hợp
+            </button>
+          )}
         </div>
 
         {showPhoiHop && (
-          <NguoiPhoiHopSelect
-            label="Người phối hợp (không bắt buộc)"
-            options={nhanVienOptions}
-            selected={phoiHop}
-            onChange={setPhoiHop}
-          />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhoiHop(false);
+                setPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Người phối hợp (không bắt buộc)"
+              options={nhanVienOptions}
+              selected={phoiHop}
+              onChange={setPhoiHop}
+            />
+          </div>
+        )}
+
+        {showPhongPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhongPhoiHop(false);
+                setPhongPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Phòng phối hợp (không bắt buộc)"
+              options={dsPhongOptions}
+              selected={phongPhoiHop}
+              onChange={setPhongPhoiHop}
+            />
+          </div>
         )}
       </div>
 

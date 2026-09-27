@@ -11,7 +11,7 @@ import {
   xoaKeHoachBaoCao,
   type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
-import { getNhanVienList } from "@/lib/actions/danh-muc";
+import { getNhanVienList, getPhongList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
 import UpdateResultModal from "./UpdateResultModal";
 import SuaNoiDungModal from "./SuaNoiDungModal";
@@ -78,20 +78,33 @@ export default function KeHoachBaoCaoItemCard({
   // tự kiểm tra lại y hệt điều kiện này, không tin giá trị này gửi từ client.
   const coTheXoa = row.nguoiTao.maNV === user?.maNV && isCungNgayHomNay(row.taoLuc);
 
-  // Danh sách đồng nghiệp cùng phòng — CHỈ cần tải khi thực sự mở modal Sửa VÀ dòng đang trong
-  // khung sửa full (tránh gọi API thừa cho phần lớn trường hợp không cần tới Người phối hợp).
+  // Danh sách đồng nghiệp cùng phòng + danh sách Phòng — CHỈ cần tải khi thực sự mở modal Sửa VÀ
+  // dòng đang trong khung sửa full (tránh gọi API thừa cho phần lớn trường hợp không cần tới).
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
+  const [dsPhong, setDsPhong] = useState<{ maPhong: string; tenPhong: string }[]>([]);
   useEffect(() => {
     if (isSuaOpen && canEditFull && nhanVienList.length === 0) {
       getNhanVienList().then(setNhanVienList);
     }
-  }, [isSuaOpen, canEditFull, nhanVienList.length]);
+    if (isSuaOpen && canEditFull && dsPhong.length === 0) {
+      getPhongList().then(setDsPhong);
+    }
+  }, [isSuaOpen, canEditFull, nhanVienList.length, dsPhong.length]);
 
   const nhanVienOptions = useMemo(() => {
     return nhanVienList
       .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
+
+  // MỚI — loại trừ chính phòng của dòng đang sửa (row.laCuaPhong thuộc phòng nào thì lấy
+  // user?.maPhong — Kế hoạch/Báo cáo cá nhân luôn thuộc phòng của người tạo, và người mở "Sửa"
+  // luôn là người trong phòng đó vì chỉ chính người tạo/lãnh đạo phòng mới thấy dòng này).
+  const dsPhongOptions = useMemo(() => {
+    return dsPhong
+      .filter((p) => p.maPhong !== user?.maPhong)
+      .map((p) => ({ value: p.maPhong, text: p.tenPhong }));
+  }, [dsPhong, user?.maPhong]);
 
   // Chỉ coi là "đã chỉnh sửa sau khi tạo" nếu cách nhau hơn 60s — tránh hiện "Cập nhật lúc" ngay
   // cả khi vừa tạo xong (ngayCapNhat luôn = taoLuc lúc mới tạo do @updatedAt).
@@ -219,6 +232,12 @@ export default function KeHoachBaoCaoItemCard({
           {row.nguoiPhoiHop.length > 0 && (
             <p className="mt-1 break-words text-xs text-purple-600 dark:text-purple-400">
               Phối hợp: {row.nguoiPhoiHop.map((p) => p.hoTen).join(", ")}
+            </p>
+          )}
+          {/* MỚI — Phòng phối hợp, chỉ đọc trên card (chỉnh sửa qua mục "Sửa" trong menu). */}
+          {row.phongPhoiHop.length > 0 && (
+            <p className="mt-1 break-words text-xs text-teal-600 dark:text-teal-400">
+              Phòng phối hợp: {row.phongPhoiHop.map((p) => p.tenPhong).join(", ")}
             </p>
           )}
           {isKeHoach && row.tienDo != null && (
@@ -403,6 +422,8 @@ export default function KeHoachBaoCaoItemCard({
           currentHanXuLy={row.hanXuLy}
           currentNguoiPhoiHopIds={row.nguoiPhoiHop.map((p) => p.maNV)}
           nhanVienOptions={nhanVienOptions}
+          currentMaPhongPhoiHop={row.phongPhoiHop.map((p) => p.maPhong)}
+          dsPhongOptions={dsPhongOptions}
           onUpdated={onChanged}
         />
       )}

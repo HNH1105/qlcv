@@ -8,7 +8,7 @@ import Button from "@/components/ui/button/Button";
 import NguoiPhoiHopSelect from "@/components/ca-nhan/NguoiPhoiHopSelect";
 import DatePicker from "@/components/form/date-picker";
 import { submitKeHoachPhong } from "@/lib/actions/ke-hoach";
-import { getNhanVienList } from "@/lib/actions/danh-muc";
+import { getNhanVienList, getPhongList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
 import {
   getCurrentWeekInfo,
@@ -79,15 +79,25 @@ export default function AddKeHoachBaoCaoPhongModal({
   const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
   const [selectedPhoiHop, setSelectedPhoiHop] = useState<string[]>([]);
   const [showPhoiHop, setShowPhoiHop] = useState(false);
+
+  // MỚI — Phòng phối hợp (cùng kiểu ẩn/hiện như Người phối hợp).
+  const [dsPhong, setDsPhong] = useState<{ maPhong: string; tenPhong: string }[]>([]);
+  const [selectedPhongPhoiHop, setSelectedPhongPhoiHop] = useState<string[]>([]);
+  const [showPhongPhoiHop, setShowPhongPhoiHop] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     getNhanVienList().then(setNhanVienList);
+    getPhongList().then(setDsPhong);
     setModalNam(defaultNamTuan.nam);
     setModalTuan(defaultNamTuan.tuan);
     setShowPhoiHop(false);
+    setSelectedPhoiHop([]);
+    setShowPhongPhoiHop(false);
+    setSelectedPhongPhoiHop([]);
     setHanXuLy("");
     setDateKey((k) => k + 1);
     setNoiDungItems([{ id: taoNoiDungId(), value: "", ketQua: "" }]);
@@ -108,6 +118,13 @@ export default function AddKeHoachBaoCaoPhongModal({
       .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
+
+  // MỚI — loại trừ chính phòng của người đang đăng nhập khỏi lựa chọn Phòng phối hợp.
+  const dsPhongOptions = useMemo(() => {
+    return dsPhong
+      .filter((p) => p.maPhong !== user?.maPhong)
+      .map((p) => ({ value: p.maPhong, text: p.tenPhong }));
+  }, [dsPhong, user?.maPhong]);
 
   const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
     setHanXuLy(dateStr);
@@ -135,6 +152,8 @@ export default function AddKeHoachBaoCaoPhongModal({
     setGhiChu("");
     setSelectedPhoiHop([]);
     setShowPhoiHop(false);
+    setSelectedPhongPhoiHop([]);
+    setShowPhongPhoiHop(false);
     setHanXuLy("");
     setDateKey((k) => k + 1);
     setError(null);
@@ -161,6 +180,7 @@ export default function AddKeHoachBaoCaoPhongModal({
           ketQua: isBaoCao ? it.ketQua : undefined,
           ghiChu: noiDungItems.length > 1 ? undefined : ghiChu,
           nguoiPhoiHopIds: selectedPhoiHop,
+          maPhongPhoiHop: selectedPhongPhoiHop,
           hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
         });
       }
@@ -238,18 +258,61 @@ export default function AddKeHoachBaoCaoPhongModal({
               <span className="text-base leading-none">+</span> Thêm người phối hợp
             </button>
           )}
+
+          {!showPhongPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhongPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm phòng phối hợp
+            </button>
+          )}
         </div>
         <p className="-mt-3 text-xs text-gray-400">
           Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
         </p>
 
         {showPhoiHop && (
-          <NguoiPhoiHopSelect
-            label="Người phối hợp (không bắt buộc)"
-            options={nhanVienOptions}
-            selected={selectedPhoiHop}
-            onChange={setSelectedPhoiHop}
-          />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhoiHop(false);
+                setSelectedPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Người phối hợp (không bắt buộc)"
+              options={nhanVienOptions}
+              selected={selectedPhoiHop}
+              onChange={setSelectedPhoiHop}
+            />
+          </div>
+        )}
+
+        {showPhongPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhongPhoiHop(false);
+                setSelectedPhongPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Phòng phối hợp (không bắt buộc)"
+              options={dsPhongOptions}
+              selected={selectedPhongPhoiHop}
+              onChange={setSelectedPhongPhoiHop}
+            />
+          </div>
         )}
 
         {/* MỚI — cho phép nhân nhiều ô Nội dung, giống bản cá nhân: mỗi ô là 1 bản ghi riêng khi

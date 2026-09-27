@@ -9,7 +9,7 @@ import Button from "@/components/ui/button/Button";
 import NguoiPhoiHopSelect from "./NguoiPhoiHopSelect";
 import DatePicker from "@/components/form/date-picker";
 import { submitKeHoachCaNhan } from "@/lib/actions/ke-hoach";
-import { getNhanVienList } from "@/lib/actions/danh-muc";
+import { getNhanVienList, getPhongList } from "@/lib/actions/danh-muc";
 import { useAuth } from "@/context/AuthContext";
 import {
   getCurrentWeekInfo,
@@ -82,18 +82,30 @@ export default function AddKeHoachBaoCaoModal({
   // Người phối hợp mặc định ẨN — chỉ hiện ra khi bấm nút "+ Thêm người phối hợp" cùng hàng với
   // dropdown Tuần, tránh chiếm chỗ ngay từ đầu khi phần lớn trường hợp không cần dùng tới.
   const [showPhoiHop, setShowPhoiHop] = useState(false);
+
+  // MỚI — Phòng phối hợp: cùng kiểu ẩn/hiện như Người phối hợp ở trên, nhưng là DANH SÁCH PHÒNG
+  // (cấp phòng), không phải cá nhân. Dùng CHUNG component NguoiPhoiHopSelect vì component đó không
+  // gắn gì với "nhân viên" cả — chỉ nhận options dạng {value, text} chung chung.
+  const [dsPhong, setDsPhong] = useState<{ maPhong: string; tenPhong: string }[]>([]);
+  const [selectedPhongPhoiHop, setSelectedPhongPhoiHop] = useState<string[]>([]);
+  const [showPhongPhoiHop, setShowPhongPhoiHop] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     getNhanVienList().then(setNhanVienList);
+    getPhongList().then(setDsPhong);
     // Mỗi lần mở modal, đưa tuần về đúng mặc định của board hiện tại (tránh giữ tuần đã chọn lần
     // trước nếu người dùng đã đổi rồi đóng modal mà không lưu).
     setModalNam(nam);
     setModalTuan(tuan);
     setChuyenThanhPhong(!isBaoCao);
     setShowPhoiHop(false);
+    setSelectedPhoiHop([]);
+    setShowPhongPhoiHop(false);
+    setSelectedPhongPhoiHop([]);
     setHanXuLy("");
     setDateKey((k) => k + 1);
     // Về lại đúng 1 ô Nội dung trống mỗi lần mở modal.
@@ -121,6 +133,14 @@ export default function AddKeHoachBaoCaoModal({
       .filter((nv) => nv.maNV !== user?.maNV && nv.maPhong === user?.maPhong)
       .map((nv) => ({ value: nv.maNV, text: nv.hoTen }));
   }, [nhanVienList, user?.maNV, user?.maPhong]);
+
+  // MỚI — Danh sách Phòng để chọn "Phòng phối hợp": loại trừ CHÍNH phòng của người đang đăng nhập
+  // (không thể "phối hợp" với chính phòng mình) — khớp với validate ở server.
+  const dsPhongOptions = useMemo(() => {
+    return dsPhong
+      .filter((p) => p.maPhong !== user?.maPhong)
+      .map((p) => ({ value: p.maPhong, text: p.tenPhong }));
+  }, [dsPhong, user?.maPhong]);
 
   const handleHanXuLyChange = useCallback((_dates: Date[], dateStr: string) => {
     setHanXuLy(dateStr);
@@ -151,6 +171,8 @@ export default function AddKeHoachBaoCaoModal({
     setChuyenThanhPhong(!isBaoCao);
     setSelectedPhoiHop([]);
     setShowPhoiHop(false);
+    setSelectedPhongPhoiHop([]);
+    setShowPhongPhoiHop(false);
     setHanXuLy("");
     setDateKey((k) => k + 1);
     setError(null);
@@ -182,6 +204,7 @@ export default function AddKeHoachBaoCaoModal({
           ketQua: isBaoCao ? it.ketQua : undefined,
           ghiChu: noiDungItems.length > 1 ? undefined : ghiChu,
           nguoiPhoiHopIds: selectedPhoiHop,
+          maPhongPhoiHop: selectedPhongPhoiHop,
           danhDauLaCuaPhong: chuyenThanhPhong,
           hanXuLy: !isBaoCao && hanXuLy ? new Date(hanXuLy) : null,
         });
@@ -269,18 +292,65 @@ export default function AddKeHoachBaoCaoModal({
               <span className="text-base leading-none">+</span> Thêm người phối hợp
             </button>
           )}
+
+          {/* MỚI — nút song song với "Thêm người phối hợp", mở khối chọn Phòng phối hợp. */}
+          {!showPhongPhoiHop && (
+            <button
+              type="button"
+              onClick={() => setShowPhongPhoiHop(true)}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 text-xs font-medium text-gray-500 hover:border-brand-300 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <span className="text-base leading-none">+</span> Thêm phòng phối hợp
+            </button>
+          )}
         </div>
         <p className="-mt-3 text-xs text-gray-400">
           Từ ngày {getWeekDateRangeLabel(modalNam, modalTuan)}
         </p>
 
+        {/* MỚI — mỗi khối phối hợp (Người/Phòng), khi đang mở, có nút "✕ Bỏ" ở góc trên-phải để
+            ẨN LẠI toàn bộ khối (không chỉ bỏ từng người/phòng đã chọn qua nút "×" trên từng thẻ) —
+            đồng thời xoá sạch lựa chọn đang có, coi như huỷ hẳn ý định phối hợp lần này. */}
         {showPhoiHop && (
-          <NguoiPhoiHopSelect
-            label="Người phối hợp cùng phòng (không bắt buộc)"
-            options={nhanVienOptions}
-            selected={selectedPhoiHop}
-            onChange={setSelectedPhoiHop}
-          />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhoiHop(false);
+                setSelectedPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Người phối hợp cùng phòng (không bắt buộc)"
+              options={nhanVienOptions}
+              selected={selectedPhoiHop}
+              onChange={setSelectedPhoiHop}
+            />
+          </div>
+        )}
+
+        {showPhongPhoiHop && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPhongPhoiHop(false);
+                setSelectedPhongPhoiHop([]);
+              }}
+              className="absolute right-0 top-0 flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-error-600 dark:hover:text-error-400"
+            >
+              ✕ Bỏ
+            </button>
+            <NguoiPhoiHopSelect
+              label="Phòng phối hợp (không bắt buộc)"
+              options={dsPhongOptions}
+              selected={selectedPhongPhoiHop}
+              onChange={setSelectedPhongPhoiHop}
+            />
+          </div>
         )}
 
         {/* MỚI — cho phép nhân nhiều ô Nội dung: bấm "+ Thêm nội dung" để nhân thêm 1 ô, mỗi ô sẽ

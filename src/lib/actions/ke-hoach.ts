@@ -22,8 +22,12 @@ import { isTrongKhungSuaFull } from "@/lib/week";
 //
 // LƯU Ý QUAN TRỌNG (đợt sửa này): TUYỆT ĐỐI KHÔNG đổi chữ ký/hành vi của bất kỳ hàm export nào đã
 // có sẵn ở dưới — các hàm này đang được gọi ở nhiều chức năng khác trong phần mềm. Mọi tính năng
-// mới (sửa full theo khung tuần, xoá theo người tạo trong ngày) đều nằm ở 2 HÀM MỚI THÊM VÀO CUỐI
-// FILE (suaFullKeHoachBaoCao, xoaKeHoachBaoCao) — không chèn logic mới vào giữa các hàm cũ.
+// mới (sửa full theo khung tuần, xoá theo người tạo trong ngày, Phòng phối hợp) đều nằm ở các HÀM
+// MỚI thêm vào CUỐI FILE (suaFullKeHoachBaoCao, xoaKeHoachBaoCao) — không chèn logic mới vào giữa
+// các hàm cũ. Riêng submitKeHoachCaNhan/submitKeHoachPhong (2 hàm cũ) chỉ được bổ sung thêm ĐÚNG 1
+// tham số OPTIONAL `maPhongPhoiHop` — không truyền thì hành vi y hệt trước giờ, không phá bất kỳ
+// chỗ gọi cũ nào. Danh sách Phòng (cho multi-select "Phòng phối hợp") dùng lại getPhongList() có
+// sẵn trong lib/actions/danh-muc.ts — không viết thêm hàm trùng chức năng ở đây.
 
 export type KeHoachRow = {
   id: number;
@@ -43,6 +47,9 @@ export type KeHoachRow = {
   hanXuLy: Date | null; // chỉ có ý nghĩa với Kế hoạch
   tienDo: number | null; // chỉ có ý nghĩa với Kế hoạch; null = chưa nhập (khác 0 = đã nhập, đang 0%)
   nguoiPhoiHop: { maNV: string; hoTen: string }[];
+  // MỚI — Phòng phối hợp (KHÁC với nguoiPhoiHop ở trên — đây là cấp PHÒNG, không phải cá nhân).
+  // Chỉ lưu vết để thống kê, không có trạng thái/tiến độ riêng.
+  phongPhoiHop: { maPhong: string; tenPhong: string }[];
   taoLuc: Date;
   ngayCapNhat: Date;
   nguoiCapNhat: { maNV: string; hoTen: string } | null;
@@ -63,6 +70,8 @@ export type KeHoachRow = {
 const KE_HOACH_INCLUDE = {
   nhanVien: { select: { maNV: true, hoTen: true } },
   nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
+  // MỚI — Phòng phối hợp.
+  phongPhoiHop: { include: { phong: { select: { maPhong: true, tenPhong: true } } } },
   nguoiCapNhat: { select: { maNV: true, hoTen: true } },
   nguoiDanhDauPhong: { select: { maNV: true, hoTen: true } },
   nguoiLoaiKhoiPhong: { select: { maNV: true, hoTen: true } },
@@ -87,6 +96,7 @@ function mapRow(r: RowWithIncludes): KeHoachRow {
     hanXuLy: r.hanXuLy,
     tienDo: r.tienDo,
     nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
+    phongPhoiHop: r.phongPhoiHop.map((p) => ({ maPhong: p.maPhong, tenPhong: p.phong.tenPhong })),
     taoLuc: r.taoLuc,
     ngayCapNhat: r.ngayCapNhat,
     nguoiCapNhat: r.nguoiCapNhat
@@ -121,6 +131,9 @@ export async function submitKeHoachCaNhan(params: {
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
   hanXuLy?: Date | null;
+  // MỚI — Phòng phối hợp (optional, KHÔNG phá chỗ gọi cũ nào chưa truyền field này). Chỉ lưu vết
+  // để thống kê — xem KeHoachTuanPhongPhoiHop trong schema.prisma.
+  maPhongPhoiHop?: string[];
   // Đánh dấu NGAY LÚC TẠO là cũng thuộc về Phòng — TRƯỚC ĐÂY tạo thêm 1 dòng PHONG riêng, NAY chỉ
   // set laCuaPhong=true ngay trên dòng vừa tạo (1 lần insert duy nhất, không còn insert thứ 2).
   danhDauLaCuaPhong?: boolean;
@@ -128,6 +141,12 @@ export async function submitKeHoachCaNhan(params: {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
   if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  // Validate: Phòng phối hợp không được trùng chính Phòng đang lập kế hoạch/báo cáo (luôn là
+  // user.maPhong — mọi kế hoạch/báo cáo cá nhân đều thuộc phòng của người tạo).
+  if (params.maPhongPhoiHop?.includes(user.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
+  }
 
   const laCuaPhong = !!params.danhDauLaCuaPhong;
 
@@ -152,6 +171,12 @@ export async function submitKeHoachCaNhan(params: {
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
           ? { create: params.nguoiPhoiHopIds.map((maNV) => ({ maNV })) }
           : undefined,
+      // MỚI — Phòng phối hợp: tạo kèm trong CÙNG 1 lần create (nested write của Prisma đã atomic
+      // sẵn, không cần $transaction riêng).
+      phongPhoiHop:
+        params.maPhongPhoiHop && params.maPhongPhoiHop.length > 0
+          ? { create: params.maPhongPhoiHop.map((maPhong) => ({ maPhong })) }
+          : undefined,
     },
   });
 
@@ -171,10 +196,16 @@ export async function submitKeHoachPhong(params: {
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
   hanXuLy?: Date | null;
+  // MỚI — Phòng phối hợp (optional).
+  maPhongPhoiHop?: string[];
 }) {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
   if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  if (params.maPhongPhoiHop?.includes(user.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
+  }
 
   const created = await prisma.keHoachTuan.create({
     data: {
@@ -195,6 +226,10 @@ export async function submitKeHoachPhong(params: {
       nguoiPhoiHop:
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
           ? { create: params.nguoiPhoiHopIds.map((maNV) => ({ maNV })) }
+          : undefined,
+      phongPhoiHop:
+        params.maPhongPhoiHop && params.maPhongPhoiHop.length > 0
+          ? { create: params.maPhongPhoiHop.map((maPhong) => ({ maPhong })) }
           : undefined,
     },
   });
@@ -426,6 +461,9 @@ export async function suaFullKeHoachBaoCao(
     noiDung: string;
     nguoiPhoiHopIds: string[];
     hanXuLy?: Date | null;
+    // MỚI — Phòng phối hợp. `undefined` = không đổi danh sách hiện tại; mảng (kể cả rỗng) = đặt
+    // lại toàn bộ danh sách Phòng phối hợp.
+    maPhongPhoiHopIds?: string[];
   }
 ) {
   const user = await requireSession();
@@ -437,6 +475,11 @@ export async function suaFullKeHoachBaoCao(
     throw new Error(
       "Chỉ được sửa đầy đủ Nội dung/Người phối hợp/Hạn xử lý đúng trong khung tuần cho phép (Báo cáo: tuần hiện tại; Kế hoạch: tuần kế tiếp tuần hiện tại)"
     );
+  }
+
+  // Validate: Phòng phối hợp không được trùng chính Phòng của dòng đang sửa.
+  if (params.maPhongPhoiHopIds?.includes(row.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
   }
 
   const noiDung = params.noiDung.trim();
@@ -460,6 +503,19 @@ export async function suaFullKeHoachBaoCao(
           prisma.keHoachTuanPhoiHop.createMany({
             data: params.nguoiPhoiHopIds.map((maNV) => ({ keHoachTuanId: id, maNV })),
           }),
+        ]
+      : []),
+    // MỚI — Phòng phối hợp: chỉ đụng vào khi thực sự có gửi lên (undefined = giữ nguyên).
+    ...(params.maPhongPhoiHopIds !== undefined
+      ? [
+          prisma.keHoachTuanPhongPhoiHop.deleteMany({ where: { keHoachTuanId: id } }),
+          ...(params.maPhongPhoiHopIds.length > 0
+            ? [
+                prisma.keHoachTuanPhongPhoiHop.createMany({
+                  data: params.maPhongPhoiHopIds.map((maPhong) => ({ keHoachTuanId: id, maPhong })),
+                }),
+              ]
+            : []),
         ]
       : []),
   ]);

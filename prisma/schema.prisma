@@ -133,6 +133,9 @@ model Phong {
   nhanViens    NhanVien[]
   keHoachTuans KeHoachTuan[]
 
+  // MỚI — Phòng phối hợp: nơi phòng này ĐƯỢC MỜI phối hợp trong Kế hoạch/Báo cáo của phòng khác.
+  keHoachTuanPhongPhoiHop KeHoachTuanPhongPhoiHop[]
+
   nhiemVuChuTri  NhiemVu[]      @relation("NhiemVuPhongChuTri")
   nhiemVuPhoiHop NhiemVuPhong[]
 
@@ -273,6 +276,9 @@ model KeHoachTuan {
 
   nguoiPhoiHop KeHoachTuanPhoiHop[]
 
+  // MỚI — Phòng phối hợp: chỉ lưu vết để thống kê (không trạng thái/tiến độ/thông báo riêng).
+  phongPhoiHop KeHoachTuanPhongPhoiHop[]
+
   // Nhiệm vụ được "nâng cấp" từ dòng Kế hoạch này (1-1, optional, phía FK nằm ở NhiemVu.nguonKeHoachTuanId)
   nhiemVuDuocTao NhiemVu?
 
@@ -298,6 +304,21 @@ model KeHoachTuanPhoiHop {
 
   @@unique([keHoachTuanId, maNV])
   @@map("ke_hoach_tuan_phoi_hop")
+}
+
+// MỚI — Phòng phối hợp cho Kế hoạch/Báo cáo tuần. CHỈ lưu vết để thống kê — không trạng thái,
+// không tiến độ, không thông báo, không workflow riêng. Composite key [keHoachTuanId, maPhong] vừa
+// là PK vừa chống trùng, nên không cần thêm id/createdAt.
+model KeHoachTuanPhongPhoiHop {
+  keHoachTuanId Int    @map("ke_hoach_tuan_id")
+  maPhong       String @map("ma_phong")
+
+  keHoachTuan KeHoachTuan @relation(fields: [keHoachTuanId], references: [id], onDelete: Cascade)
+  phong       Phong       @relation(fields: [maPhong], references: [maPhong])
+
+  @@id([keHoachTuanId, maPhong])
+  @@index([maPhong])
+  @@map("ke_hoach_tuan_phong_phoi_hop")
 }
 
 // ==========================================================================================
