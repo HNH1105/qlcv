@@ -16,7 +16,7 @@ import {
 } from "@/lib/actions/thong-bao";
 import { formatDateTimeVN } from "@/lib/week";
 
-const KHOANG_LAM_MOI_MS = 30000; // poll đơn giản mỗi 30s — đủ dùng cho bản đầu, thay bằng
+const KHOANG_LAM_MOI_MS = 300000; // poll đơn giản mỗi 30s — đủ dùng cho bản đầu, thay bằng
 // WebSocket/SSE sau nếu cần thật sự real-time, không phải đổi gì ở phần dữ liệu.
 
 export default function NotificationDropdown() {

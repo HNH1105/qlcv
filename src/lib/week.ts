@@ -67,6 +67,70 @@ export function getCurrentWeekInfo(): { nam: number; tuan: number } {
 }
 
 // ==========================================================================================
+// ====================   TUẦN KẾ TIẾP TUẦN HIỆN TẠI (xử lý vắt năm)   =====================
+// ==========================================================================================
+// Trước đây logic "tuần hiện tại + 1, vắt năm thì về Tuần 1 năm sau" được viết TAY, RIÊNG, ngay
+// trong AddKeHoachBaoCaoPhongModal.tsx (biến defaultNamTuan). Nay tách ra đây thành 1 hàm dùng
+// chung — vì logic NÀY, đúng y hệt, còn cần dùng lại ở isTrongKhungSuaFull() bên dưới (xác định
+// khung được phép sửa full của Kế hoạch). Tách chung để không có 2 nơi tính "tuần kế tiếp" theo
+// 2 cách viết khác nhau rồi một lúc nào đó lệch nhau.
+export function getNextWeekInfo(): { nam: number; tuan: number } {
+  const { nam: namHT, tuan: tuanHT } = getCurrentWeekInfo();
+  let t = tuanHT + 1;
+  let n = namHT;
+  if (t > isoWeeksInYear(namHT)) {
+    t = 1;
+    n = namHT + 1;
+  }
+  return { nam: n, tuan: t };
+}
+
+// ==========================================================================================
+// ====================   KHUNG "SỬA FULL" (Nội dung/Người phối hợp/Hạn xử lý)   ============
+// ==========================================================================================
+// NGHIỆP VỤ: 1 dòng Kế hoạch/Báo cáo chỉ được sửa FULL (Nội dung + Người phối hợp + Hạn xử lý,
+// ngoài Kết quả/Ghi chú/Tiến độ vốn luôn sửa được) khi (nam, tuan) CỦA CHÍNH DÒNG ĐÓ khớp đúng:
+//   - loai = BAOCAO  → đúng tuần HIỆN TẠI thực      (getCurrentWeekInfo())
+//   - loai = KEHOACH → đúng tuần KẾ TIẾP tuần hiện tại thực (getNextWeekInfo())
+// "Tuần hiện tại thực" ở đây LUÔN tính theo ngày giờ thật của môi trường đang chạy hàm này (client
+// hoặc server), KHÔNG liên quan gì đến tuần người dùng đang chọn xem trên WeekSelect của board.
+//
+// Hàm này PHẢI được gọi ở CẢ HAI phía:
+// - Client (component sửa): chỉ để quyết định ẩn/hiện các ô Nội dung/Người phối hợp/Hạn xử lý —
+//   thuần UX, KHÔNG phải chốt chặn bảo mật.
+// - Server Action (updateKetQuaGhiChu trong ke-hoach.ts): chốt chặn THẬT SỰ — bắt buộc tự truy vấn
+//   lại (nam, tuan, loai) của dòng từ DB rồi gọi lại đúng hàm này trước khi cho phép ghi đè Nội
+//   dung/Người phối hợp/Hạn xử lý, để chặn trường hợp gọi thẳng server action bỏ qua UI.
+export function isTrongKhungSuaFull(
+  loai: "KEHOACH" | "BAOCAO",
+  nam: number,
+  tuan: number
+): boolean {
+  if (loai === "BAOCAO") {
+    const ht = getCurrentWeekInfo();
+    return nam === ht.nam && tuan === ht.tuan;
+  }
+  const nw = getNextWeekInfo();
+  return nam === nw.nam && tuan === nw.tuan;
+}
+
+// ==========================================================================================
+// ====================   CÙNG NGÀY HÔM NAY (dùng cho tính năng XOÁ)   =====================
+// ==========================================================================================
+// Dùng cho quy tắc "chỉ được xoá trong đúng ngày vừa nhập": so sánh theo NĂM/THÁNG/NGÀY local
+// (giờ của môi trường đang chạy hàm này) — CHỈ dùng để ẩn/hiện nút Xoá ở client cho gọn; chốt chặn
+// THẬT SỰ nằm ở server action xoaKeHoachBaoCao (ke-hoach.ts), tự so sánh lại y hệt cách này.
+export function isCungNgayHomNay(d: Date | string): boolean {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
+// ==========================================================================================
 // ====================   DANH SÁCH "TUẦN" GỘP CHUNG (KHÔNG CẦN CHỌN NĂM)  =================
 // ==========================================================================================
 // Trước đây UI có 2 dropdown riêng "Năm" + "Tuần". Nay gộp thành 1 dropdown "Tuần" duy nhất cho

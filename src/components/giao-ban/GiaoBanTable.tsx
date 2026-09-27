@@ -47,7 +47,7 @@ export type HanhDongHang = "chi-tiet" | "sua" | "ghi-chu" | "chuyen-tuan" | "huy
 // ============================================================================================
 
 const COT_MAC_DINH: Record<string, number | undefined> = {
-  stt: 56,
+  stt: 60,
   noiDung: undefined, // auto — chiếm hết phần còn lại, xem giải thích ở trên
   ghiChu: 160,
   phong: 130,
@@ -169,7 +169,14 @@ export default function GiaoBanTable({
               const quaHan = !r.daKetThuc && new Date(r.hanHoanThanh) < new Date();
               const dangGui = dangGuiIds?.has(r.id) ?? false;
               const tenChuyenVien = r.nguoiXuLys.map((x) => x.nhanVien.hoTen);
-              const laChuyenTuan = r.duocChuyenThanh != null;
+              // Tô đỏ ghi chú cả khi ĐÃ xác nhận chuyển tuần (duocChuyenThanh != null) LẪN khi
+              // mới chỉ ĐỀ NGHỊ chuyển tuần, chưa được Admin xác nhận (deNghiChuyenTuan) — ghi chú
+              // lúc đó đã là "Chuyển tuần kế" (xem chuyen-tuan.ts), cần tô đỏ ngay từ bước đề nghị.
+              // 2 trạng thái riêng biệt, màu khác nhau: đang ĐỀ NGHỊ (chưa xác nhận) tô đỏ đậm,
+              // ĐÃ XÁC NHẬN xong (duocChuyenThanh != null) tô xanh lá đậm. 2 cờ này loại trừ nhau
+              // (xacNhanChuyenTuan() luôn set deNghiChuyenTuan về false khi tạo duocChuyenThanh).
+              const dangDeNghiChuyenTuan = r.deNghiChuyenTuan;
+              const daXacNhanChuyenTuan = r.duocChuyenThanh != null;
 
               return (
                 <tr key={r.id} className={`hover:bg-gray-50 dark:hover:bg-white/[0.02] ${dangGui ? "opacity-60" : ""}`}>
@@ -212,7 +219,11 @@ export default function GiaoBanTable({
                   <td className="overflow-hidden px-4 py-3 align-top">
                     <p
                       className={`line-clamp-2 whitespace-normal break-words text-xs ${
-                        laChuyenTuan ? "font-medium text-error-600" : "text-gray-500 dark:text-gray-400"
+                        daXacNhanChuyenTuan
+                          ? "font-bold text-success-600"
+                          : dangDeNghiChuyenTuan
+                            ? "font-bold text-error-600"
+                            : "text-gray-500 dark:text-gray-400"
                       }`}
                     >
                       {r.ghiChu || <span className="italic text-gray-300 dark:text-gray-600">—</span>}

@@ -36,13 +36,11 @@ export default function UserDropdown() {
         className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
       >
         <span className="mr-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-semibold text-white">
-          {getInitial(user?.hoTen)}
+          {getInitial(user?.hoTen)} 
         </span>
-
         <span className="block mr-1 font-medium text-theme-sm">
           {user?.hoTen ?? "..."}
         </span>
-
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""
@@ -79,6 +77,9 @@ export default function UserDropdown() {
             <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
               {user?.tenPhong} · {user?.tenDangNhap}
             </span>
+               <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
+              {user?.chucVu} 
+            </span> 
           </div>
         </div>
 

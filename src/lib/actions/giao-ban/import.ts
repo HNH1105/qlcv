@@ -172,7 +172,7 @@ export async function xacNhanImportGiaoBan(
             noiDung: r.noiDung,
             phongXuLyId: r.maPhong,
             hanHoanThanh: new Date(r.hanHoanThanhISO!),
-            mucDoUuTien: "TRUNGBINH",
+            mucDoUuTien: "CAO",
             ghiChu: r.ghiChu,
             createdById: session.maNV,
             nguoiXuLys: { create: r.maNguoiXuLy.map((maNV) => ({ nhanVienId: maNV })) },

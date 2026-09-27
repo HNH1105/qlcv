@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
 import { LoaiGhiNhan } from "@prisma/client";
+import { isTrongKhungSuaFull } from "@/lib/week";
 
 // ==========================================================================================
 // ====================                  ĐỌC THÊM                        =================
@@ -18,9 +19,24 @@ import { LoaiGhiNhan } from "@prisma/client";
 // - "Loại khỏi phòng" = set laCuaPhong=false, laCuaCaNhan=true — không phân biệt dòng đó vốn dĩ có
 //   mặt ở cá nhân hay không (khác hẳn 2 nhánh TH1/TH2 phức tạp ở bản cũ).
 // - Mọi query đều phải lọc isDeleted:false (soft-delete, không xoá vật lý nữa).
+//
+// LƯU Ý QUAN TRỌNG (đợt sửa này): TUYỆT ĐỐI KHÔNG đổi chữ ký/hành vi của bất kỳ hàm export nào đã
+// có sẵn ở dưới — các hàm này đang được gọi ở nhiều chức năng khác trong phần mềm. Mọi tính năng
+// mới (sửa full theo khung tuần, xoá theo người tạo trong ngày, Phòng phối hợp) đều nằm ở các HÀM
+// MỚI thêm vào CUỐI FILE (suaFullKeHoachBaoCao, xoaKeHoachBaoCao) — không chèn logic mới vào giữa
+// các hàm cũ. Riêng submitKeHoachCaNhan/submitKeHoachPhong (2 hàm cũ) chỉ được bổ sung thêm ĐÚNG 1
+// tham số OPTIONAL `maPhongPhoiHop` — không truyền thì hành vi y hệt trước giờ, không phá bất kỳ
+// chỗ gọi cũ nào. Danh sách Phòng (cho multi-select "Phòng phối hợp") dùng lại getPhongList() có
+// sẵn trong lib/actions/danh-muc.ts — không viết thêm hàm trùng chức năng ở đây.
 
 export type KeHoachRow = {
   id: number;
+  // MỚI — bổ sung thêm 2 field so với bản gốc (thuần ĐỌC, không đổi cách map các field khác):
+  // dùng để client tự xác định "khung sửa full"/"trong ngày nhập" theo ĐÚNG tuần/ngày CỦA DÒNG ĐÓ,
+  // không phụ thuộc tuần đang xem trên board. Chỉ CỘNG THÊM field vào object trả về — không đổi ý
+  // nghĩa hay format của bất kỳ field nào đã có, nên không ảnh hưởng chỗ gọi cũ.
+  nam: number;
+  tuan: number;
   noiDung: string;
   ketQua: string | null;
   ghiChu: string | null;
@@ -31,6 +47,9 @@ export type KeHoachRow = {
   hanXuLy: Date | null; // chỉ có ý nghĩa với Kế hoạch
   tienDo: number | null; // chỉ có ý nghĩa với Kế hoạch; null = chưa nhập (khác 0 = đã nhập, đang 0%)
   nguoiPhoiHop: { maNV: string; hoTen: string }[];
+  // MỚI — Phòng phối hợp (KHÁC với nguoiPhoiHop ở trên — đây là cấp PHÒNG, không phải cá nhân).
+  // Chỉ lưu vết để thống kê, không có trạng thái/tiến độ riêng.
+  phongPhoiHop: { maPhong: string; tenPhong: string }[];
   taoLuc: Date;
   ngayCapNhat: Date;
   nguoiCapNhat: { maNV: string; hoTen: string } | null;
@@ -51,6 +70,8 @@ export type KeHoachRow = {
 const KE_HOACH_INCLUDE = {
   nhanVien: { select: { maNV: true, hoTen: true } },
   nguoiPhoiHop: { include: { nhanVien: { select: { hoTen: true } } } },
+  // MỚI — Phòng phối hợp.
+  phongPhoiHop: { include: { phong: { select: { maPhong: true, tenPhong: true } } } },
   nguoiCapNhat: { select: { maNV: true, hoTen: true } },
   nguoiDanhDauPhong: { select: { maNV: true, hoTen: true } },
   nguoiLoaiKhoiPhong: { select: { maNV: true, hoTen: true } },
@@ -63,6 +84,8 @@ type RowWithIncludes = Awaited<ReturnType<typeof prisma.keHoachTuan.findFirstOrT
 function mapRow(r: RowWithIncludes): KeHoachRow {
   return {
     id: r.id,
+    nam: r.nam,
+    tuan: r.tuan,
     noiDung: r.noiDung,
     ketQua: r.ketQua,
     ghiChu: r.ghiChu,
@@ -73,6 +96,7 @@ function mapRow(r: RowWithIncludes): KeHoachRow {
     hanXuLy: r.hanXuLy,
     tienDo: r.tienDo,
     nguoiPhoiHop: r.nguoiPhoiHop.map((p) => ({ maNV: p.maNV, hoTen: p.nhanVien.hoTen })),
+    phongPhoiHop: r.phongPhoiHop.map((p) => ({ maPhong: p.maPhong, tenPhong: p.phong.tenPhong })),
     taoLuc: r.taoLuc,
     ngayCapNhat: r.ngayCapNhat,
     nguoiCapNhat: r.nguoiCapNhat
@@ -107,6 +131,9 @@ export async function submitKeHoachCaNhan(params: {
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
   hanXuLy?: Date | null;
+  // MỚI — Phòng phối hợp (optional, KHÔNG phá chỗ gọi cũ nào chưa truyền field này). Chỉ lưu vết
+  // để thống kê — xem KeHoachTuanPhongPhoiHop trong schema.prisma.
+  maPhongPhoiHop?: string[];
   // Đánh dấu NGAY LÚC TẠO là cũng thuộc về Phòng — TRƯỚC ĐÂY tạo thêm 1 dòng PHONG riêng, NAY chỉ
   // set laCuaPhong=true ngay trên dòng vừa tạo (1 lần insert duy nhất, không còn insert thứ 2).
   danhDauLaCuaPhong?: boolean;
@@ -114,6 +141,12 @@ export async function submitKeHoachCaNhan(params: {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
   if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  // Validate: Phòng phối hợp không được trùng chính Phòng đang lập kế hoạch/báo cáo (luôn là
+  // user.maPhong — mọi kế hoạch/báo cáo cá nhân đều thuộc phòng của người tạo).
+  if (params.maPhongPhoiHop?.includes(user.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
+  }
 
   const laCuaPhong = !!params.danhDauLaCuaPhong;
 
@@ -138,6 +171,12 @@ export async function submitKeHoachCaNhan(params: {
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
           ? { create: params.nguoiPhoiHopIds.map((maNV) => ({ maNV })) }
           : undefined,
+      // MỚI — Phòng phối hợp: tạo kèm trong CÙNG 1 lần create (nested write của Prisma đã atomic
+      // sẵn, không cần $transaction riêng).
+      phongPhoiHop:
+        params.maPhongPhoiHop && params.maPhongPhoiHop.length > 0
+          ? { create: params.maPhongPhoiHop.map((maPhong) => ({ maPhong })) }
+          : undefined,
     },
   });
 
@@ -157,10 +196,16 @@ export async function submitKeHoachPhong(params: {
   ghiChu?: string;
   nguoiPhoiHopIds?: string[];
   hanXuLy?: Date | null;
+  // MỚI — Phòng phối hợp (optional).
+  maPhongPhoiHop?: string[];
 }) {
   const user = await requireSession();
   const noiDung = params.noiDung.trim();
   if (!noiDung) throw new Error("Vui lòng nhập nội dung");
+
+  if (params.maPhongPhoiHop?.includes(user.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
+  }
 
   const created = await prisma.keHoachTuan.create({
     data: {
@@ -181,6 +226,10 @@ export async function submitKeHoachPhong(params: {
       nguoiPhoiHop:
         params.nguoiPhoiHopIds && params.nguoiPhoiHopIds.length > 0
           ? { create: params.nguoiPhoiHopIds.map((maNV) => ({ maNV })) }
+          : undefined,
+      phongPhoiHop:
+        params.maPhongPhoiHop && params.maPhongPhoiHop.length > 0
+          ? { create: params.maPhongPhoiHop.map((maPhong) => ({ maPhong })) }
           : undefined,
     },
   });
@@ -277,6 +326,9 @@ export async function markHoanThanh(ids: number[], value: boolean) {
 // không dùng null cho "không đổi" được).
 // TRƯỚC ĐÂY: phải updateMany thêm 1 lần nữa cho dòng con (nguonId). NAY: chỉ 1 lần updateMany duy
 // nhất, vì Kết quả/Ghi chú của "bản Phòng" và "bản Cá nhân" giờ LÀ CÙNG 1 CỘT DỮ LIỆU.
+// KHÔNG ĐỔI — giữ NGUYÊN VĂN hàm này so với bản gốc (nhiều chức năng khác đang gọi). Tính năng
+// "sửa full" (Nội dung/Người phối hợp/Hạn xử lý theo khung tuần) nằm RIÊNG ở hàm
+// suaFullKeHoachBaoCao phía cuối file — KHÔNG đụng vào hàm này.
 export async function updateKetQuaGhiChu(
   ids: number[],
   params: {
@@ -385,6 +437,125 @@ export async function loaiKhoiPhong(id: number) {
       nguoiLoaiKhoiPhongId: user.maNV,
       thoiGianLoaiKhoiPhong: new Date(),
       nguoiCapNhatId: user.maNV,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true };
+}
+
+// ==========================================================================================
+// ====================         2 HÀM MỚI — KHÔNG ĐỤNG GÌ CÁC HÀM Ở TRÊN          ===========
+// ==========================================================================================
+
+// ==================== [MỚI] SỬA FULL (Nội dung + Người phối hợp + Hạn xử lý) ====================
+// Tách hẳn khỏi updateKetQuaGhiChu (không đổi hàm đó, xem lưu ý ở đầu file). Hàm này CHỈ được dùng
+// cho đúng 1 dòng (không hàng loạt), và CHỈ thành công khi (nam, tuan) THẬT của dòng đó (đọc lại từ
+// DB, không tin client) đang nằm trong khung cho phép — xem isTrongKhungSuaFull() ở lib/week.ts:
+//   - loai = BAOCAO  -> đúng tuần hiện tại thực
+//   - loai = KEHOACH -> đúng tuần kế tiếp tuần hiện tại thực
+// hanXuLy: bỏ qua (không set) nếu dòng không phải Kế hoạch, dù client có lỡ gửi lên.
+export async function suaFullKeHoachBaoCao(
+  id: number,
+  params: {
+    noiDung: string;
+    nguoiPhoiHopIds: string[];
+    hanXuLy?: Date | null;
+    // MỚI — Phòng phối hợp. `undefined` = không đổi danh sách hiện tại; mảng (kể cả rỗng) = đặt
+    // lại toàn bộ danh sách Phòng phối hợp.
+    maPhongPhoiHopIds?: string[];
+  }
+) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+
+  if (!isTrongKhungSuaFull(row.loai, row.nam, row.tuan)) {
+    throw new Error(
+      "Chỉ được sửa đầy đủ Nội dung/Người phối hợp/Hạn xử lý đúng trong khung tuần cho phép (Báo cáo: tuần hiện tại; Kế hoạch: tuần kế tiếp tuần hiện tại)"
+    );
+  }
+
+  // Validate: Phòng phối hợp không được trùng chính Phòng của dòng đang sửa.
+  if (params.maPhongPhoiHopIds?.includes(row.maPhong)) {
+    throw new Error("Phòng phối hợp không được trùng với phòng đang lập kế hoạch/báo cáo");
+  }
+
+  const noiDung = params.noiDung.trim();
+  if (!noiDung) throw new Error("Nội dung không được để trống");
+
+  const data: { noiDung: string; nguoiCapNhatId: string; hanXuLy?: Date | null } = {
+    noiDung,
+    nguoiCapNhatId: user.maNV,
+  };
+  // Hạn xử lý chỉ có ý nghĩa với Kế hoạch — dù client có gửi hanXuLy lên cho 1 dòng Báo cáo thì
+  // cũng bỏ qua, không set.
+  if (row.loai === "KEHOACH" && params.hanXuLy !== undefined) {
+    data.hanXuLy = params.hanXuLy;
+  }
+
+  await prisma.$transaction([
+    prisma.keHoachTuan.update({ where: { id }, data }),
+    prisma.keHoachTuanPhoiHop.deleteMany({ where: { keHoachTuanId: id } }),
+    ...(params.nguoiPhoiHopIds.length > 0
+      ? [
+          prisma.keHoachTuanPhoiHop.createMany({
+            data: params.nguoiPhoiHopIds.map((maNV) => ({ keHoachTuanId: id, maNV })),
+          }),
+        ]
+      : []),
+    // MỚI — Phòng phối hợp: chỉ đụng vào khi thực sự có gửi lên (undefined = giữ nguyên).
+    ...(params.maPhongPhoiHopIds !== undefined
+      ? [
+          prisma.keHoachTuanPhongPhoiHop.deleteMany({ where: { keHoachTuanId: id } }),
+          ...(params.maPhongPhoiHopIds.length > 0
+            ? [
+                prisma.keHoachTuanPhongPhoiHop.createMany({
+                  data: params.maPhongPhoiHopIds.map((maPhong) => ({ keHoachTuanId: id, maPhong })),
+                }),
+              ]
+            : []),
+        ]
+      : []),
+  ]);
+
+  revalidateAllLienQuan();
+  return { success: true };
+}
+
+// ==================== [MỚI] XOÁ — theo NGƯỜI TẠO, CHỈ trong ĐÚNG NGÀY vừa nhập ==================
+// Quy tắc: chỉ chính người đã tạo (row.maNV === người đang đăng nhập) mới được xoá, và chỉ xoá được
+// khi taoLuc của dòng đó rơi vào ĐÚNG NGÀY HÔM NAY (theo giờ hệ thống lúc gọi hàm này — server-side,
+// không tin ngày giờ gửi từ client). Qua khỏi ngày hôm đó (kể cả mới sang 00:00 một chút) là không
+// xoá được nữa. Dùng soft-delete (isDeleted/xoaLuc/nguoiXoaId) — đúng cơ chế xoá đã có sẵn trong
+// schema (KHÔNG xoá vật lý), nhất quán với mọi nơi khác trong hệ thống đều lọc isDeleted:false.
+export async function xoaKeHoachBaoCao(id: number) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+
+  if (row.maNV !== user.maNV) {
+    throw new Error("Bạn chỉ được xoá dòng do chính mình nhập");
+  }
+
+  const taoLuc = new Date(row.taoLuc);
+  const now = new Date();
+  const cungNgay =
+    taoLuc.getFullYear() === now.getFullYear() &&
+    taoLuc.getMonth() === now.getMonth() &&
+    taoLuc.getDate() === now.getDate();
+  if (!cungNgay) {
+    throw new Error("Chỉ được xoá trong đúng ngày vừa nhập — dòng này đã qua ngày khác");
+  }
+
+  await prisma.keHoachTuan.update({
+    where: { id },
+    data: {
+      isDeleted: true,
+      xoaLuc: new Date(),
+      nguoiXoaId: user.maNV,
     },
   });
 

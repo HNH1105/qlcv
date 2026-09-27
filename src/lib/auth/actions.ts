@@ -80,6 +80,7 @@ export async function loginAction(
     tenPhong: taiKhoan.nhanVien.phong.tenPhong,
     quyen: taiKhoan.nhanVien.quyen,
     isAdmin: taiKhoan.isAdmin,
+    chucVu: taiKhoan.nhanVien.chucVu,
   });
 
   redirect("/");

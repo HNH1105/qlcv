@@ -19,6 +19,7 @@ export type SessionPayload = {
   tenPhong: string;
   quyen: string; // giá trị enum Quyen dạng string: USER | LANHDAOPHONG | LANHDAODONVI
   isAdmin: boolean;
+  chucVu: string | null;
 };
 
 async function encrypt(payload: SessionPayload, expiresAt: Date) {

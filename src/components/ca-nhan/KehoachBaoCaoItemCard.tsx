@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import Checkbox from "@/components/form/input/Checkbox";
@@ -8,17 +8,22 @@ import {
   markHoanThanh,
   danhDauLaCuaPhong,
   loaiKhoiPhong,
+  xoaKeHoachBaoCao,
   type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
+import { getNhanVienList, getPhongList } from "@/lib/actions/danh-muc";
+import { useAuth } from "@/context/AuthContext";
 import UpdateResultModal from "./UpdateResultModal";
+import SuaNoiDungModal from "./SuaNoiDungModal";
 import ChiTietModal from "./ChiTietModal";
 import ConfirmDialog from "./ConfirmDialog";
 import { ProgressStrip } from "./ProgressBar";
 import { useToast } from "./ToastProvider";
-import { formatDateTimeVN, formatDateVN } from "@/lib/week";
+import { formatDateTimeVN, formatDateVN, isTrongKhungSuaFull, isCungNgayHomNay } from "@/lib/week";
 import { LoaiGhiNhan } from "@prisma/client";
 
-type ConfirmAction = "hoanThanh" | "boHoanThanh" | "chuyenPhong" | "loaiPhong" | null;
+type ConfirmAction = "hoanThanh" | "boHoanThanh" | "chuyenPhong" | "loaiPhong" | "xoa" | null;
+type NhanVien = { maNV: string; hoTen: string; maPhong: string };
 
 export default function KeHoachBaoCaoItemCard({
   row,
@@ -51,17 +56,65 @@ export default function KeHoachBaoCaoItemCard({
 }) {
   const isKeHoach = loai === "KEHOACH";
   const { show } = useToast();
+  const user = useAuth();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  // "Cập nhật kết quả/ghi chú" — LUÔN hiện trong menu, không điều kiện gì (modal gốc, không đổi).
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
+  // "Sửa" — modal MỚI, RIÊNG, chỉ hiện mục menu khi canEditFull=true (xem bên dưới).
+  const [isSuaOpen, setIsSuaOpen] = useState(false);
   const [isChiTietOpen, setIsChiTietOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [isPending, setIsPending] = useState(false);
+
+  // "Sửa" (Nội dung/Hạn xử lý/Người phối hợp) chỉ cho phép khi (nam, tuan) CỦA CHÍNH DÒNG NÀY
+  // (row.nam/row.tuan — KHÔNG PHẢI tuần đang xem trên board) nằm đúng trong khung cho phép. Đây
+  // CHỈ để ẩn/hiện mục menu — server action suaFullKeHoachBaoCao vẫn tự kiểm tra lại y hệt điều
+  // này, không tin giá trị này gửi từ client.
+  const canEditFull = isTrongKhungSuaFull(loai, row.nam, row.tuan);
+
+  // "Xoá": chỉ CHÍNH người đã tạo dòng này, và chỉ trong ĐÚNG NGÀY vừa nhập (taoLuc). Đây CHỈ để
+  // ẩn/hiện nút Xoá cho gọn — chốt chặn THẬT SỰ nằm ở server action xoaKeHoachBaoCao (ke-hoach.ts),
+  // tự kiểm tra lại y hệt điều kiện này, không tin giá trị này gửi từ client.
+  const coTheXoa = row.nguoiTao.maNV === user?.maNV && isCungNgayHomNay(row.taoLuc);
+
+  // Danh sách đồng nghiệp cùng phòng + danh sách Phòng — CHỈ cần tải khi thực sự mở modal Sửa VÀ
+  // dòng đang trong khung sửa full (tránh gọi API thừa cho phần lớn trường hợp không cần tới).
+  const [nhanVienList, setNhanVienList] = useState<NhanVien[]>([]);
+  const [dsPhong, setDsPhong] = useState<{ maPhong: string; tenPhong: string }[]>([]);
+  useEffect(() => {
+    if (isSuaOpen && canEditFull && nhanVienList.length === 0) {
+      getNhanVienList().then(setNhanVienList);
+    }
+    if (isSuaOpen && canEditFull && dsPhong.length === 0) {
+      getPhongList().then(setDsPhong);
+    }
+  }, [isSuaOpen, canEditFull, nhanVienList.length, dsPhong.length]);
+
+  // MỚI — chỉ loại chính người dùng ra, KHÔNG lọc theo 1 phòng cố định nữa (khác trước) — để
+  // SuaNoiDungModal tự tính lại danh sách Người phối hợp mỗi khi Phòng phối hợp thay đổi (nạp thêm
+  // thành viên của phòng vừa chọn, cộng dồn với phòng chủ user?.maPhong).
+  const nhanVienListChoSua = useMemo(() => {
+    return nhanVienList.filter((nv) => nv.maNV !== user?.maNV);
+  }, [nhanVienList, user?.maNV]);
+
+  // MỚI — loại trừ chính phòng của dòng đang sửa (row.laCuaPhong thuộc phòng nào thì lấy
+  // user?.maPhong — Kế hoạch/Báo cáo cá nhân luôn thuộc phòng của người tạo, và người mở "Sửa"
+  // luôn là người trong phòng đó vì chỉ chính người tạo/lãnh đạo phòng mới thấy dòng này).
+  const dsPhongOptions = useMemo(() => {
+    return dsPhong
+      .filter((p) => p.maPhong !== user?.maPhong)
+      .map((p) => ({ value: p.maPhong, text: p.tenPhong }));
+  }, [dsPhong, user?.maPhong]);
 
   // Chỉ coi là "đã chỉnh sửa sau khi tạo" nếu cách nhau hơn 60s — tránh hiện "Cập nhật lúc" ngay
   // cả khi vừa tạo xong (ngayCapNhat luôn = taoLuc lúc mới tạo do @updatedAt).
   const daChinhSua =
     Math.abs(new Date(row.ngayCapNhat).getTime() - new Date(row.taoLuc).getTime()) > 60000;
+
+  // Có ít nhất 1 trong 2 dòng chú thích neo góc dưới-phải (Cập nhật lúc / Hạn xử lý) -> cần chừa
+  // thêm khoảng trống bên dưới card trên tablet/desktop để không đè lên nội dung chính.
+  const coGhiChuGocDuoi = daChinhSua || (isKeHoach && !!row.hanXuLy);
 
   async function handleConfirmHoanThanh(value: boolean) {
     setIsPending(true);
@@ -96,6 +149,20 @@ export default function KeHoachBaoCaoItemCard({
     }
   }
 
+  async function handleConfirmXoa() {
+    setIsPending(true);
+    try {
+      await xoaKeHoachBaoCao(row.id);
+      show("success", "Đã xoá", `Đã xoá ${isKeHoach ? "kế hoạch" : "báo cáo"} này`);
+      onChanged();
+    } catch (e) {
+      show("error", "Xoá thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsPending(false);
+      setConfirmAction(null);
+    }
+  }
+
   async function handleConfirmLoaiPhong() {
     setIsPending(true);
     try {
@@ -114,7 +181,7 @@ export default function KeHoachBaoCaoItemCard({
     <div className="rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div
         className={`flex items-start justify-between gap-3 p-4 sm:relative ${
-          isKeHoach && row.hanXuLy ? "sm:pb-8" : ""
+          coGhiChuGocDuoi ? "sm:pb-10" : ""
         }`}
       >
         <div className="flex min-w-0 items-start gap-3">
@@ -168,31 +235,42 @@ export default function KeHoachBaoCaoItemCard({
               Phối hợp: {row.nguoiPhoiHop.map((p) => p.hoTen).join(", ")}
             </p>
           )}
-          {daChinhSua && (
-            <p className="mt-1 text-[11px] italic text-gray-400">
-              Cập nhật lúc {formatDateTimeVN(row.ngayCapNhat)}
-              {row.nguoiCapNhat && ` bởi ${row.nguoiCapNhat.hoTen}`}
-            </p>
-          )}
-
-          {/* Hạn xử lý — CHỈ Kế hoạch, chỉ hiện khi có giá trị. Trên di động nằm trong luồng nội
-              dung như bình thường; từ tablet/desktop (sm+) trở lên neo xuống góc dưới-phải của
-              card cho gọn (đúng yêu cầu), tách khỏi khối text chính. */}
-          {isKeHoach && row.hanXuLy && (
-            <p
-              className={`mt-1 text-xs font-medium sm:absolute sm:bottom-2 sm:right-4 sm:mt-0 ${
-                !row.daHoanThanh && new Date(row.hanXuLy) < new Date()
-                  ? "text-error-600"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
-            >
-              Hạn xử lý: {formatDateVN(new Date(row.hanXuLy))}
+          {/* MỚI — Phòng phối hợp, chỉ đọc trên card (chỉnh sửa qua mục "Sửa" trong menu). */}
+          {row.phongPhoiHop.length > 0 && (
+            <p className="mt-1 break-words text-xs text-teal-600 dark:text-teal-400">
+              Phòng phối hợp: {row.phongPhoiHop.map((p) => p.tenPhong).join(", ")}
             </p>
           )}
           {isKeHoach && row.tienDo != null && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Tiến độ: <span className="font-medium">{row.tienDo}%</span>
             </p>
+          )}
+
+          {/* "Cập nhật lúc..." + "Hạn xử lý" — GOM CHUNG 1 KHỐI, neo xuống góc dưới-phải của card
+              trên tablet/desktop (sm+), xếp chồng lên nhau (Cập nhật lúc ở trên, Hạn xử lý ở dưới)
+              để không đè nhau. Trên di động, cả 2 vẫn nằm trong luồng nội dung bình thường (không
+              absolute), xếp theo đúng thứ tự cũ. */}
+          {coGhiChuGocDuoi && (
+            <div className="mt-1 flex flex-col items-start gap-0.5 sm:absolute sm:bottom-2 sm:right-4 sm:mt-0 sm:items-end">
+              {daChinhSua && (
+                <p className="text-[11px] italic text-gray-400">
+                  Cập nhật lúc {formatDateTimeVN(row.ngayCapNhat)}
+                  {row.nguoiCapNhat && ` bởi ${row.nguoiCapNhat.hoTen}`}
+                </p>
+              )}
+              {isKeHoach && row.hanXuLy && (
+                <p
+                  className={`text-xs font-medium ${
+                    !row.daHoanThanh && new Date(row.hanXuLy) < new Date()
+                      ? "text-error-600"
+                      : "text-gray-500 dark:text-gray-400"
+                  }`}
+                >
+                  Hạn xử lý: {formatDateVN(new Date(row.hanXuLy))}
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -239,6 +317,22 @@ export default function KeHoachBaoCaoItemCard({
             </DropdownItem>
           )}
 
+          {/* "Sửa" — MỤC MENU MỚI, RIÊNG với "Cập nhật kết quả/ghi chú" bên dưới. CHỈ hiện khi
+              canEditFull=true (đúng khung tuần cho phép). Mở SuaNoiDungModal — chỉ có Nội dung/Hạn
+              xử lý/Người phối hợp, không có Kết quả/Ghi chú/Tiến độ. */}
+          {canEditFull && (
+            <DropdownItem
+              onItemClick={() => {
+                setIsMenuOpen(false);
+                setIsSuaOpen(true);
+              }}
+              className="rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              ✏️ Sửa
+            </DropdownItem>
+          )}
+
+          {/* "Cập nhật kết quả/ghi chú" — LUÔN hiện, không điều kiện gì (đúng hành vi gốc). */}
           <DropdownItem
             onItemClick={() => {
               setIsMenuOpen(false);
@@ -272,6 +366,34 @@ export default function KeHoachBaoCaoItemCard({
               🚫 Loại khỏi phòng
             </DropdownItem>
           )}
+
+          {/* "Xoá" — chỉ hiện cho chính người đã tạo dòng này, và chỉ trong đúng ngày vừa nhập.
+              Icon dùng SVG (currentColor) thay vì emoji 🗑️ để chắc chắn hiển thị ĐÚNG MÀU ĐỎ — emoji
+              không nhận được màu chữ CSS trên nhiều trình duyệt/hệ điều hành. */}
+          {coTheXoa && (
+            <DropdownItem
+              onItemClick={() => {
+                setIsMenuOpen(false);
+                setConfirmAction("xoa");
+              }}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="shrink-0"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.5 2.75A.75.75 0 019.25 2h1.5a.75.75 0 01.75.75V4h3.25a.75.75 0 010 1.5h-.598l-.687 9.63A2.25 2.25 0 0111.17 17.5H8.83a2.25 2.25 0 01-2.245-2.37L5.898 5.5H5.3a.75.75 0 010-1.5h3.2V2.75zm1.5.75v.5h0v-.5zM7.4 5.5l.68 9.516a.75.75 0 00.749.734h2.34a.75.75 0 00.75-.734L12.6 5.5H7.4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Xoá
+            </DropdownItem>
+          )}
         </Dropdown>
       </div>
       </div>
@@ -290,6 +412,23 @@ export default function KeHoachBaoCaoItemCard({
         showTienDo={isKeHoach}
         currentTienDo={row.tienDo}
       />
+
+      {canEditFull && (
+        <SuaNoiDungModal
+          isOpen={isSuaOpen}
+          onClose={() => setIsSuaOpen(false)}
+          id={row.id}
+          currentNoiDung={row.noiDung}
+          showHanXuLy={isKeHoach}
+          currentHanXuLy={row.hanXuLy}
+          currentNguoiPhoiHopIds={row.nguoiPhoiHop.map((p) => p.maNV)}
+          nhanVienList={nhanVienListChoSua}
+          ownMaPhong={user?.maPhong}
+          currentMaPhongPhoiHop={row.phongPhoiHop.map((p) => p.maPhong)}
+          dsPhongOptions={dsPhongOptions}
+          onUpdated={onChanged}
+        />
+      )}
 
       <ChiTietModal
         isOpen={isChiTietOpen}
@@ -324,6 +463,16 @@ export default function KeHoachBaoCaoItemCard({
         description="Bạn chắc chắn muốn bỏ đánh dấu hoàn thành cho kế hoạch này?"
         isLoading={isPending}
         onConfirm={() => handleConfirmHoanThanh(false)}
+        onClose={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === "xoa"}
+        title={`Xoá ${isKeHoach ? "kế hoạch" : "báo cáo"}`}
+        description={`Bạn chắc chắn muốn xoá ${isKeHoach ? "kế hoạch" : "báo cáo"} này? Chỉ xoá được trong đúng ngày vừa nhập, không thể hoàn tác.`}
+        confirmText="Xoá"
+        isLoading={isPending}
+        onConfirm={handleConfirmXoa}
         onClose={() => setConfirmAction(null)}
       />
 
