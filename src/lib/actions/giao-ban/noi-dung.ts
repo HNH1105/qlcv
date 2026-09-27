@@ -188,7 +188,13 @@ export async function capNhatGhiChuGiaoBan(id: number, ghiChu: string | null) {
     where: { id },
     include: { cuocHopGiaoBan: true },
   });
-  kiemTraKhoa(row.cuocHopGiaoBan.trangThai, row.daKetThuc);
+  // CHỈ chặn khi CUỘC HỌP đã chốt — KHÔNG chặn theo daKetThuc của bản thân nội dung nữa. Theo yêu
+  // cầu mới: nội dung đã hoàn thành/chuyển tuần/loại bỏ vẫn cho phép cập nhật kết quả/ghi chú bình
+  // thường, miễn cuộc giao ban đang còn mở. Vì vậy dùng thẳng điều kiện trangThai thay vì gọi
+  // kiemTraKhoa() (hàm đó chặn luôn cả daKetThuc, không phù hợp riêng cho hành động này).
+  if (row.cuocHopGiaoBan.trangThai !== "DANG_MO") {
+    throw new Error("Cuộc giao ban đã chốt, không thể cập nhật ghi chú.");
+  }
 
   const quyen = tinhQuyenNoiDung(session, row.phongXuLyId);
   if (!quyen.capNhatGhiChu) throw new Error("Bạn không có quyền cập nhật ghi chú.");

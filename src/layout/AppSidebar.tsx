@@ -166,7 +166,7 @@ function getNavItems(quyen?: string): NavItem[] {
         // Các mục còn lại ai cũng thấy
         { name: "Chờ xử lý", path: "/nhiem-vu", pro: false },
         { name: "Thống kê", path: "/nhiem-vu/thong-ke", pro: false },
-        { name: "Tra cứu", path: "/nhiem-vu/tra-cuu", pro: false },
+       
       ],
     },
     {
@@ -188,6 +188,7 @@ const SearchItems: NavItem[] = [
     subItems: [
       { name: "Kế hoạch", path: "/tra-cuu/ke-hoach", pro: false },
       { name: "Báo cáo", path: "/tra-cuu/bao-cao", pro: false },
+       { name: "Nhiệm vụ", path: "/nhiem-vu/tra-cuu", pro: false },
     ],
   },
   {
@@ -205,7 +206,7 @@ const SearchItems: NavItem[] = [
         pro: false,
       },
       {
-        name: "Check list giao ban",
+        name: "Check list giao ban cũ",
         path: "https://soyte-vlg.vercel.app/en/check-list/giao-ban",
         pro: false,
       },

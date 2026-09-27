@@ -19,9 +19,14 @@ export async function deNghiChuyenTuan(id: number) {
   return prisma.$transaction(async (tx) => {
     const updated = await tx.noiDungGiaoBan.update({
       where: { id },
-      data: { deNghiChuyenTuan: true },
+      // Theo yêu cầu: ngay khi ĐỀ NGHỊ chuyển tuần (chưa cần Admin xác nhận), ghi chú tự động hiện
+      // "Đề nghị chuyển tuần" (UI tô đỏ đậm dựa vào cờ deNghiChuyenTuan, xem GiaoBanTable) — khác
+      // với lúc XÁC NHẬN xong mới đổi thành "Đã chuyển tuần" (tô xanh lá, xem xacNhanChuyenTuan).
+      data: { deNghiChuyenTuan: true, ghiChu: "Đề nghị chuyển tuần" },
     });
-    await ghiLog(tx, id, session.maNV, "CHUYEN_TUAN_SAU");
+    await ghiLog(tx, id, session.maNV, "CHUYEN_TUAN_SAU", {
+      truongDuocSua: "ghiChu", giaTriCu: row.ghiChu, giaTriMoi: "Đề nghị chuyển tuần",
+    });
     return updated;
   });
 }
@@ -65,10 +70,11 @@ export async function xacNhanChuyenTuan(noiDungCuId: number, cuocHopGiaoBanMoiId
 
     await tx.noiDungGiaoBan.update({
       where: { id: cuCu.id },
-      // Theo yêu cầu: bản ghi tuần CŨ tự động ghi rõ "Chuyển tuần" vào Ghi chú (hiển thị màu đỏ ở
-      // UI) để phân biệt trực quan với "Loại bỏ" — nhưng vẫn tính vào tỷ lệ % là "chưa hoàn thành"
-      // vì daHoanThanh vẫn giữ false, không đổi.
-      data: { daKetThuc: true, deNghiChuyenTuan: false, ghiChu: "Chuyển tuần" },
+      // Theo yêu cầu: bản ghi tuần CŨ tự động ghi rõ "Đã chuyển tuần" vào Ghi chú (hiển thị xanh
+      // lá đậm ở UI, khác màu đỏ của trạng thái "Đề nghị chuyển tuần" lúc chưa xác nhận) để phân
+      // biệt trực quan với "Loại bỏ" — nhưng vẫn tính vào tỷ lệ % là "chưa hoàn thành" vì
+      // daHoanThanh vẫn giữ false, không đổi.
+      data: { daKetThuc: true, deNghiChuyenTuan: false, ghiChu: "Đã chuyển tuần" },
     });
 
     await ghiLog(tx, moi.id, session.maNV, "XAC_NHAN_CHUYEN_TUAN", {

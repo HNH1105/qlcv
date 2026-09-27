@@ -752,6 +752,14 @@ const nhanViens: NhanVienSeed[] = [
     chucVu: "Chuyên viên",
     quyen: Quyen.USER,
   },
+  {
+    maNV: "BT14",
+    hoTen: "Phan Quốc Sơn",
+    maPhong: "BTXH",
+    thuTu: 15,
+    chucVu: "Chuyên viên",
+    quyen: Quyen.USER,
+  },
 ];
 
 // ============================================================
@@ -793,6 +801,16 @@ const phongs = [
     maPhong: "BTXH",
     tenPhong: "Bảo trợ xã hội - Trẻ em",
     thuTu: 7,
+  },
+  {
+    maPhong: "CCDS",
+    tenPhong: "Chi cục Dân số",
+    thuTu: 8,
+  },
+   {
+    maPhong: "CCATTP",
+    tenPhong: "Chi cục An toàn thực phẩm",
+    thuTu: 9,
   },
 ];
 
@@ -1055,7 +1073,7 @@ async function main() {
       },
       update: {
         hoTen: "Quản trị hệ thống",
-        maPhong: "BGD",
+        maPhong: "VP",
         thuTu: 999,
         chucVu: "Quản trị hệ thống",
         quyen: Quyen.USER,
@@ -1064,7 +1082,7 @@ async function main() {
       create: {
         maNV: "ADMIN01",
         hoTen: "Quản trị hệ thống",
-        maPhong: "BGD",
+        maPhong: "VP",
         thuTu: 999,
         chucVu: "Quản trị hệ thống",
         hoatDong: false, // ẩn khỏi danh sách chọn người xử lý/phối hợp — chỉ dùng để đăng nhập admin
