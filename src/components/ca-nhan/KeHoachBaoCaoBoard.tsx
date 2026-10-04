@@ -27,8 +27,8 @@ const STATUS_TABS: { key: StatusTab; label: string }[] = [
   { key: "tatCa", label: "Tất cả trạng thái" },
   { key: "chuaThucHien", label: "Chưa thực hiện" },
   { key: "daThucHien", label: "Đã thực hiện" },
-  { key: "daChuyenPhong", label: "KH Phòng" },
-  { key: "chuaChuyenPhong", label: "Chưa đánh dấu KH phòng" },
+  { key: "daChuyenPhong", label: "Đã đánh dấu cấp Phòng" },
+  { key: "chuaChuyenPhong", label: "Chưa đánh dấu cấp phòng" },
 ];
 
 export default function KeHoachBaoCaoBoard({ loai }: { loai: LoaiGhiNhan }) {

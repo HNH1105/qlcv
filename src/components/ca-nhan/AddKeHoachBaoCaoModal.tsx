@@ -458,8 +458,14 @@ export default function AddKeHoachBaoCaoModal({
             cáo Phòng" bên màn Phòng chưa hoàn thiện, tránh tạo dữ liệu thừa ngoài ý muốn. */}
         <div className="flex items-center gap-2">
           <Checkbox checked={chuyenThanhPhong} onChange={setChuyenThanhPhong} />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
+          <span className="text-sm text-gray-700 dark:text-gray-300 font-bold">
             Đồng thời đánh dấu là {isBaoCao ? "Báo cáo Phòng" : "Kế hoạch Phòng"}
+          </span>
+         
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-md text-red-700 dark:text-red-700 font-bold">
+            Lưu ý: Chỉ thực hiện check vào check box phía trên, khi {isBaoCao ? "Báo cáo" : "Kế hoạch"} này quan trọng và ở Cấp độ của Phòng
           </span>
         </div>
       </div>
