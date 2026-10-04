@@ -218,7 +218,7 @@ export default function GiaoBanTable({
 
                   <td className="overflow-hidden px-4 py-3 align-top">
                     <p
-                      className={`line-clamp-2 whitespace-normal break-words text-xs ${
+                      className={` whitespace-normal break-words text-xs ${
                         daXacNhanChuyenTuan
                           ? "font-bold text-success-600"
                           : dangDeNghiChuyenTuan

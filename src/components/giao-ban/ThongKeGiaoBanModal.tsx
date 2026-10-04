@@ -50,7 +50,7 @@ export default function ThongKeGiaoBanModal({
         </p>
       </div>
 
-      <div className="max-h-96 space-y-2 overflow-y-auto">
+      <div className="h-[520px] space-y-1 overflow-y-auto">
         {tongTheoPhong.map((p) => (
           <div key={p.maPhong} className="rounded-lg border border-gray-200 dark:border-white/[0.05]">
             <button
@@ -59,8 +59,8 @@ export default function ThongKeGiaoBanModal({
             >
               <div>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">{p.tenPhong}</p>
-                <p className="text-xs text-gray-400">
-                  {p.daHoanThanh}/{p.tong} đầu việc — {p.tyLe}%
+                <p className="text-xs text-blue-600">
+                  {p.daHoanThanh}/{p.tong}  — {p.tyLe}%
                 </p>
               </div>
               <div className="flex items-center gap-3">
