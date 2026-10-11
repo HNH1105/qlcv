@@ -20,7 +20,7 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
   // Sắp xếp theo tên Phòng rồi tới ngày tạo — theo yêu cầu, thay vì theo id.
   const rows = await prisma.noiDungGiaoBan.findMany({
     where: { cuocHopGiaoBanId: id, isDeleted: false }, 
-    orderBy: [{ phongXuLy: { tenPhong: "desc" } }, { createdAt: "asc" }],
+    orderBy: [{ phongXuLy: { thuTu: "asc" } }, { createdAt: "asc" }],
     include: {
       phongXuLy: { select: { maPhong: true, tenPhong: true } },
       nguoiHoanThanh: { select: { hoTen: true } },
