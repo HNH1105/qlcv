@@ -19,7 +19,7 @@ export async function getCuocHopGiaoBanChiTiet(id: number) {
   // Phân quyền thật sự nằm ở HÀNH ĐỘNG (sửa/hoàn thành), xem chi tiết ở helpers.ts.
   // Sắp xếp theo tên Phòng rồi tới ngày tạo — theo yêu cầu, thay vì theo id.
   const rows = await prisma.noiDungGiaoBan.findMany({
-    where: { cuocHopGiaoBanId: id, isDeleted: false },
+    where: { cuocHopGiaoBanId: id, isDeleted: false }, 
     orderBy: [{ phongXuLy: { tenPhong: "desc" } }, { createdAt: "asc" }],
     include: {
       phongXuLy: { select: { maPhong: true, tenPhong: true } },
