@@ -22,7 +22,7 @@ export async function buildKeHoachBaoCaoPhongDocx(params: {
 }): Promise<Buffer> {
   const { loai, nam, tuan, rows } = params;
   const tenLoai = loai === "BAOCAO" ? "BÁO CÁO" : "KẾ HOẠCH";
-  const tieuDe = `${tenLoai} TUẦN ${tuan} - NĂM ${nam}`;
+  const tieuDe = `TÓM TẮT ${tenLoai} TUẦN ${tuan} - NĂM ${nam}`;
   const [tuNgay, denNgay] = getWeekDateRangeLabel(nam, tuan).split(" đến ");
 
   // Gom theo phòng — KHÔNG dùng Map theo maPhong vì rows đã sort sẵn theo thuTu của phòng, chỉ cần
