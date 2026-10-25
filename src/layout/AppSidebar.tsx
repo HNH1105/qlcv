@@ -206,6 +206,11 @@ const SearchItems: NavItem[] = [
         pro: false,
       },
       {
+        name: "Lịch xe đi công tác",
+        path: "https://soyte-vlg.vercel.app/en/lich-xe-cong-tac",
+        pro: false,
+      },
+      {
         name: "Check list giao ban cũ",
         path: "https://soyte-vlg.vercel.app/en/check-list/giao-ban",
         pro: false,

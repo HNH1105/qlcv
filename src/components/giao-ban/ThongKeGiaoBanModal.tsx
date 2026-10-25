@@ -29,7 +29,7 @@ export default function ThongKeGiaoBanModal({
     }
     return Array.from(map.entries())
       .map(([maPhong, v]) => ({ maPhong, ...v, tyLe: v.tong === 0 ? 0 : Math.round((v.daHoanThanh / v.tong) * 100) }))
-      .sort((a, b) => a.tenPhong.localeCompare(b.tenPhong));
+      .sort((a, b) => b.tenPhong.localeCompare(a.tenPhong));
   }, [rows]);
 
   const tongToanBo = rows.length;
