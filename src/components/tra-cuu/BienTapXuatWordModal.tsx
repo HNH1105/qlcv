@@ -133,7 +133,7 @@ export default function BienTapXuatWordModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="m-4 max-w-[900px]">
+    <Modal isOpen={isOpen} onClose={onClose} className="m-4 max-w-[900px] lg:max-w-[1280px]">
       {/* Khung cao cố định vừa màn hình (trừ lề 2rem, tối đa 900px): tiêu đề + chân cố định, 2
           danh sách chia đôi phần còn lại và TỰ CUỘN bên trong — không bao giờ vượt chiều cao
           trình duyệt dù danh sách dài. */}
@@ -153,10 +153,12 @@ export default function BienTapXuatWordModal({
           Đang tải...
         </div>
       ) : (
-        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
+        {/* Điện thoại / màn nhỏ: 2 danh sách xếp TRÊN - DƯỚI. Máy tính (lg trở lên): SONG SONG
+            trái - phải, mỗi bên tự cuộn. */}
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3">
           <KhoiDanhSach
             tieuDe={`① ${isKeHoach ? "Kế hoạch" : "Báo cáo"} phòng — sẽ xuất Word`}
-            goiY="Bỏ tick → chuyển xuống ②"
+            goiY="Bỏ tick → chuyển sang ②"
             rows={dsPhong}
             daTick
             vuaChuyenId={vuaChuyenId}
@@ -165,11 +167,14 @@ export default function BienTapXuatWordModal({
             rong={`Chưa có ${tenLoai} nào sẽ được xuất`}
           />
 
-          <div className="shrink-0 text-center text-sm leading-none text-gray-400">⇅</div>
+          <div className="shrink-0 self-center text-sm leading-none text-gray-400">
+            <span className="lg:hidden">⇅</span>
+            <span className="hidden lg:inline">⇄</span>
+          </div>
 
           <KhoiDanhSach
             tieuDe={`② ${isKeHoach ? "Kế hoạch" : "Báo cáo"} cá nhân — không xuất`}
-            goiY="Tick → chuyển lên ①"
+            goiY="Tick → chuyển sang ①"
             rows={dsCaNhan}
             daTick={false}
             vuaChuyenId={vuaChuyenId}
@@ -241,7 +246,7 @@ function KhoiDanhSach({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-gray-200 dark:border-white/[0.08]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-gray-200 dark:border-white/[0.08]">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/[0.05]">
         <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
           {tieuDe} ({rows.length})
