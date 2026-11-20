@@ -1,6 +1,7 @@
 "use client";
 
 import type { KeHoachRow } from "@/lib/actions/ke-hoach";
+import { isTrongKhungSuaFull } from "@/lib/week";
 
 // Dùng chung cho 2 trang mới ở menu lãnh đạo: "Kế hoạch (Toàn bộ phòng)" và "Báo cáo (Toàn bộ
 // phòng)". Trước đây phần này nằm trong tab "Toàn bộ" của KeHoachBaoCaoBoard — nay tách hẳn ra
@@ -15,10 +16,15 @@ import type { KeHoachRow } from "@/lib/actions/ke-hoach";
 export default function ToanBoPhongList({
   rows,
   onConvert,
+  onUnmark,
   loai,
 }: {
   rows: KeHoachRow[];
   onConvert?: (id: number) => void;
+  // [MỚI] Lãnh đạo bỏ đánh dấu "là của Phòng". Nút chỉ hiện khi dòng đang là của Phòng, là dòng cá
+  // nhân, và đúng khung tuần (Báo cáo: tuần hiện tại; Kế hoạch: tuần kế tiếp) — chỉ để ẩn/hiện,
+  // server action lanhDaoBoDanhDauLaCuaPhong tự kiểm tra lại toàn bộ.
+  onUnmark?: (row: KeHoachRow) => void;
   // Báo cáo KHÔNG có khái niệm "hoàn thành/chưa hoàn thành" (đó là field mặc định false trong DB,
   // chỉ có ý nghĩa với Kế hoạch) — dùng loai để ẩn dòng trạng thái này khi render Báo cáo, tránh
   // hiện nhầm "Chưa hoàn thành" cho mọi báo cáo như bug vừa gặp.
@@ -87,6 +93,17 @@ export default function ToanBoPhongList({
                     → Đánh dấu {loai === "KEHOACH" ? "KH" : "BC"} Phòng
                   </button>
                 )}
+                {onUnmark &&
+                  row.laCuaPhong &&
+                  row.laCuaCaNhan &&
+                  isTrongKhungSuaFull(loai, row.nam, row.tuan) && (
+                    <button
+                      onClick={() => onUnmark(row)}
+                      className="shrink-0 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:bg-white/5 dark:text-gray-300"
+                    >
+                      ↩ Bỏ đánh dấu {loai === "KEHOACH" ? "KH" : "BC"} Phòng
+                    </button>
+                  )}
               </div>
             ))}
           </div>

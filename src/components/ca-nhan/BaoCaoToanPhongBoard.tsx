@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWeekInfo, getWeekDateRangeLabel } from "@/lib/week";
-import { getKeHoachToanPhong, danhDauLaCuaPhong, type KeHoachRow } from "@/lib/actions/ke-hoach";
+import {
+  getKeHoachToanPhong,
+  danhDauLaCuaPhong,
+  lanhDaoBoDanhDauLaCuaPhong,
+  type KeHoachRow,
+} from "@/lib/actions/ke-hoach";
+import ConfirmDialog from "./ConfirmDialog";
 import WeekSelect from "./WeekSelect";
 import ToanBoPhongList from "./ToanBoPhongList";
 import ToastProvider, { useToast } from "./ToastProvider";
@@ -26,6 +32,9 @@ function Content() {
   const [tuan, setTuan] = useState(tuanHienTai);
   const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // [MỚI] Bỏ đánh dấu "là của Phòng" — dòng đang chờ xác nhận + trạng thái đang xử lý.
+  const [dongCanBoDanhDau, setDongCanBoDanhDau] = useState<KeHoachRow | null>(null);
+  const [isBoDanhDauPending, setIsBoDanhDauPending] = useState(false);
 
   const reload = useCallback(() => {
     setIsLoading(true);
@@ -50,6 +59,21 @@ function Content() {
     }
   }
 
+  async function handleConfirmBoDanhDau() {
+    if (!dongCanBoDanhDau) return;
+    setIsBoDanhDauPending(true);
+    try {
+      await lanhDaoBoDanhDauLaCuaPhong(dongCanBoDanhDau.id);
+      show("success", "Đã bỏ đánh dấu", "Mục này không còn là Báo cáo Phòng");
+      reload();
+    } catch (e) {
+      show("error", "Bỏ đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsBoDanhDauPending(false);
+      setDongCanBoDanhDau(null);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-4 sm:px-6 dark:border-white/[0.05]">
@@ -67,9 +91,28 @@ function Content() {
             Đang tải...
           </div>
         ) : (
-          <ToanBoPhongList rows={rows} onConvert={handleConvert} loai="BAOCAO" />
+          <ToanBoPhongList
+            rows={rows}
+            onConvert={handleConvert}
+            onUnmark={setDongCanBoDanhDau}
+            loai="BAOCAO"
+          />
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={dongCanBoDanhDau !== null}
+        title="Bỏ đánh dấu BC Phòng"
+        description={`Bạn chắc chắn muốn bỏ đánh dấu mục này khỏi Báo cáo Phòng?${
+          dongCanBoDanhDau ? ` Mục vẫn giữ nguyên trong báo cáo cá nhân của ${dongCanBoDanhDau.nguoiTao.hoTen}.` : ""
+        }`}
+        confirmText="Bỏ đánh dấu"
+        isLoading={isBoDanhDauPending}
+        onConfirm={handleConfirmBoDanhDau}
+        onClose={() => {
+          if (!isBoDanhDauPending) setDongCanBoDanhDau(null);
+        }}
+      />
     </div>
   );
 }

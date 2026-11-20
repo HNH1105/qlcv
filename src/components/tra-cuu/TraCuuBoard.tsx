@@ -8,6 +8,9 @@ import { getPhongList } from "@/lib/actions/danh-muc";
 import WeekSelect from "@/components/ca-nhan/WeekSelect";
 import ProgressBar from "@/components/ca-nhan/ProgressBar";
 import ToastProvider, { useToast } from "@/components/ca-nhan/ToastProvider";
+import { useAuth } from "@/context/AuthContext";
+import BienTapXuatWordModal, { type BienTapOverrides } from "./BienTapXuatWordModal";
+import { taiFileTuResponse } from "./tai-file";
 
 type Tab = "canhan" | "phong";
 type Phong = { maPhong: string; tenPhong: string };
@@ -49,6 +52,17 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
   const [rows, setRows] = useState<TraCuuRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+
+  // [MỚI] Biên tập trước khi xuất Word — chỉ LĐ phòng + Admin. Lựa chọn giữ trong state của board,
+  // tách theo từng (tuần, phòng đang lọc): đóng/mở lại giao diện biên tập vẫn còn, chỉ mất khi F5.
+  // Không ghi gì vào DB.
+  const user = useAuth();
+  const coQuyenBienTap = !!user && (user.isAdmin || user.quyen === "LANHDAOPHONG");
+  const [isBienTapOpen, setIsBienTapOpen] = useState(false);
+  const [bienTapTheoKhoa, setBienTapTheoKhoa] = useState<Record<string, BienTapOverrides>>({});
+  const khoaBienTap = `${nam}|${tuan}|${maPhongFilter}`;
+  const overridesHienTai = bienTapTheoKhoa[khoaBienTap] ?? {};
+  const soThayDoiBienTap = Object.keys(overridesHienTai).length;
 
   useEffect(() => {
     getPhongList().then(setPhongList);
@@ -106,21 +120,7 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
     setIsExporting(true);
     try {
       const res = await fetch(wordUrl);
-      if (!res.ok) throw new Error("Xuất Word thất bại, vui lòng thử lại");
-      const blob = await res.blob();
-
-      const cd = res.headers.get("Content-Disposition") ?? "";
-      const match = cd.match(/filename="?([^"]+)"?/);
-      const tenFile = match?.[1] ? decodeURIComponent(match[1]) : `${loai}_Tuan_${tuan}_${nam}.docx`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = tenFile;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await taiFileTuResponse(res, `${loai}_Tuan_${tuan}_${nam}.docx`);
     } catch (e) {
       show("error", "Xuất Word thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
     } finally {
@@ -188,6 +188,21 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
         {/* Xuất Word chỉ có ở tab Phòng — đúng yêu cầu, và áp dụng cho cả Kế hoạch lẫn Báo cáo
             Phòng vì cùng 1 định dạng xuất, chỉ đổi tiêu đề "KẾ HOẠCH"/"BÁO CÁO". */}
         {tab === "phong" && (
+          <div className="flex flex-wrap items-center gap-2">
+          {coQuyenBienTap && (
+            <button
+              onClick={() => setIsBienTapOpen(true)}
+              title="Biên tập danh sách trước khi xuất Word (không lưu vào hệ thống)"
+              className="flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-500/10"
+            >
+              ✏️ Biên tập
+              {soThayDoiBienTap > 0 && (
+                <span className="rounded-full bg-blue-600 px-1.5 text-xs text-white">
+                  {soThayDoiBienTap}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={handleExportWord}
             disabled={isExporting}
@@ -202,8 +217,26 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
               <>⬇ Xuất Word</>
             )}
           </button>
+          </div>
         )}
       </div>
+
+      {/* Chỉ mount khi đang mở — mỗi lần mở là tải dữ liệu mới; lựa chọn vẫn giữ trong
+          bienTapTheoKhoa của board này (chỉ mất khi F5). */}
+      {coQuyenBienTap && isBienTapOpen && (
+        <BienTapXuatWordModal
+          isOpen
+          onClose={() => setIsBienTapOpen(false)}
+          nam={nam}
+          tuan={tuan}
+          loai={loai}
+          maPhong={maPhongFilter === "TATCA" ? undefined : maPhongFilter}
+          overrides={overridesHienTai}
+          onChangeOverrides={(next) =>
+            setBienTapTheoKhoa((cu) => ({ ...cu, [khoaBienTap]: next }))
+          }
+        />
+      )}
 
       <div className="space-y-6 p-4 sm:p-6">
         <p className="text-xs text-gray-400">

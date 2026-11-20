@@ -18,7 +18,9 @@ export async function buildKeHoachBaoCaoPhongDocx(params: {
   // Đã lọc laCuaPhong=true từ trước (xem traCuuKeHoachBaoCao với phamVi: "phong") — có thể là 1
   // phòng hoặc nhiều phòng,
   // GIỮ NGUYÊN thứ tự đã sort theo thuTu của phòng, không sort lại ở đây.
-  rows: TraCuuRow[];
+  // Chỉ cần tenPhong + noiDung — nới kiểu (Pick) để route "xuất theo danh sách đã biên tập" cũng
+  // dùng lại được, không phá chỗ gọi cũ (TraCuuRow vẫn thoả kiểu này).
+  rows: Pick<TraCuuRow, "tenPhong" | "noiDung">[];
 }): Promise<Buffer> {
   const { loai, nam, tuan, rows } = params;
   const tenLoai = loai === "BAOCAO" ? "BÁO CÁO" : "KẾ HOẠCH";
