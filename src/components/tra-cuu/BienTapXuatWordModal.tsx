@@ -153,9 +153,9 @@ export default function BienTapXuatWordModal({
           Đang tải...
         </div>
       ) : (
-        {/* Điện thoại / màn nhỏ: 2 danh sách xếp TRÊN - DƯỚI. Máy tính (lg trở lên): SONG SONG
-            trái - phải, mỗi bên tự cuộn. */}
         <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3">
+          {/* Điện thoại / màn nhỏ: 2 danh sách xếp TRÊN - DƯỚI. Máy tính (lg trở lên): SONG SONG
+              trái - phải, mỗi bên tự cuộn. */}
           <KhoiDanhSach
             tieuDe={`① ${isKeHoach ? "Kế hoạch" : "Báo cáo"} phòng — sẽ xuất Word`}
             goiY="Bỏ tick → chuyển sang ②"
