@@ -99,7 +99,7 @@ export default function ToanBoPhongList({
                   isTrongKhungSuaFull(loai, row.nam, row.tuan) && (
                     <button
                       onClick={() => onUnmark(row)}
-                      className="shrink-0 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:bg-white/5 dark:text-gray-300"
+                      className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white shadow-theme-xs hover:bg-orange-600"
                     >
                       ↩ Bỏ đánh dấu {loai === "KEHOACH" ? "KH" : "BC"} Phòng
                     </button>

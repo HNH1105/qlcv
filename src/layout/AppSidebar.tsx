@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import TuanHienTaiLabel from "@/components/common/TuanHienTaiLabel";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -465,7 +466,11 @@ const AppSidebar: React.FC = () => {
                 width={40}
                 height={40}
               />
-              Hệ thống QLCV
+              {/* Tên hệ thống + dòng "Tuần hiện tại (...)" chữ đỏ nhỏ ngay bên dưới */}
+              <div className="flex flex-col leading-tight">
+                <span>Hệ thống QLCV</span>
+                <TuanHienTaiLabel className="mt-0.5 text-xs font-medium text-red-600 dark:text-red-400" />
+              </div>
             </div>
           ) : (
             <Image

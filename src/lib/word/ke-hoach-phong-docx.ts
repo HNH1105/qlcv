@@ -66,14 +66,24 @@ export async function buildKeHoachBaoCaoPhongDocx(params: {
     children.push(
       new Paragraph({
         spacing: { before: 200, after: 120 },
-        children: [new TextRun({ text: `${gi + 1}/ ${g.tenPhong}`, bold: true, size: 24 })],
+        // Định dạng: "1/ Văn phòng (07 nhiệm vụ)" — số lượng luôn 2 chữ số.
+        children: [
+          new TextRun({
+            text: `${gi + 1}/ ${g.tenPhong} (${String(g.items.length).padStart(2, "0")} nhiệm vụ)`,
+            bold: true,
+            size: 24,
+          }),
+        ],
       })
     );
-    g.items.forEach((noiDung, i) => {
+    // Mỗi mục là 1 dòng gạch đầu dòng "- ..." (không đánh số). Thụt lề treo để dòng thứ 2 trở đi
+    // của nội dung dài thẳng hàng với chữ, không chui xuống dưới dấu "-".
+    g.items.forEach((noiDung) => {
       children.push(
         new Paragraph({
           spacing: { after: 80 },
-          children: [new TextRun({ text: `${i + 1}. ${noiDung}` })],
+          indent: { left: 284, hanging: 284 },
+          children: [new TextRun({ text: `- ${noiDung}` })],
         })
       );
     });

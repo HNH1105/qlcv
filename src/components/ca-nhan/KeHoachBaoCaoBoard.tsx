@@ -208,7 +208,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
                 onChange={(e) => setXemKemKeHoach(e.target.checked)}
                 className="h-4 w-4 cursor-pointer accent-brand-500"
               />
-              Xem kèm kế hoạch tuần này
+              Xem kèm kế hoạch
             </label>
           )}
         </div>
@@ -340,7 +340,7 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
 }
 
 // ==================== [MỚI] KHỐI "KẾ HOẠCH TUẦN NÀY" (dưới danh sách Báo cáo) ====================
-// Chỉ được mount khi ô tick "Xem kèm kế hoạch tuần này" đang bật, và có key = tuần đang chọn (xem
+// Chỉ được mount khi ô tick "Xem kèm kế hoạch" đang bật, và có key = tuần đang chọn (xem
 // chỗ gọi) — đổi tuần / tắt ô tick là component này bị huỷ, mount lại từ đầu với isLoading=true.
 // Nhờ vậy:
 //   - không bao giờ hiện nhầm kế hoạch của tuần khác (kết quả trả về trễ của tuần cũ rơi vào

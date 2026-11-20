@@ -133,8 +133,12 @@ export default function BienTapXuatWordModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="m-4 max-w-[900px] p-5 sm:p-6">
-      <div className="pr-12">
+    <Modal isOpen={isOpen} onClose={onClose} className="m-4 max-w-[900px]">
+      {/* Khung cao cố định vừa màn hình (trừ lề 2rem, tối đa 900px): tiêu đề + chân cố định, 2
+          danh sách chia đôi phần còn lại và TỰ CUỘN bên trong — không bao giờ vượt chiều cao
+          trình duyệt dù danh sách dài. */}
+      <div className="flex h-[calc(100dvh-2rem)] max-h-[900px] flex-col p-5 sm:p-6">
+      <div className="shrink-0 pr-12">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           Biên tập {tenLoai} phòng trước khi xuất Word
         </h3>
@@ -144,12 +148,12 @@ export default function BienTapXuatWordModal({
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-gray-400">
+        <div className="flex flex-1 items-center justify-center gap-2 text-gray-400">
           <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-brand-500" />
           Đang tải...
         </div>
       ) : (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
           <KhoiDanhSach
             tieuDe={`① ${isKeHoach ? "Kế hoạch" : "Báo cáo"} phòng — sẽ xuất Word`}
             goiY="Bỏ tick → chuyển xuống ②"
@@ -161,7 +165,7 @@ export default function BienTapXuatWordModal({
             rong={`Chưa có ${tenLoai} nào sẽ được xuất`}
           />
 
-          <div className="text-center text-gray-400">⇅</div>
+          <div className="shrink-0 text-center text-sm leading-none text-gray-400">⇅</div>
 
           <KhoiDanhSach
             tieuDe={`② ${isKeHoach ? "Kế hoạch" : "Báo cáo"} cá nhân — không xuất`}
@@ -176,7 +180,7 @@ export default function BienTapXuatWordModal({
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/[0.05]">
+      <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/[0.05]">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Đã bỏ {soBo} · Đã thêm {soThem} · Sẽ xuất {dsPhong.length} mục
         </span>
@@ -203,6 +207,7 @@ export default function BienTapXuatWordModal({
             )}
           </button>
         </div>
+      </div>
       </div>
     </Modal>
   );
@@ -236,14 +241,14 @@ function KhoiDanhSach({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-white/[0.08]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/[0.05]">
+    <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-gray-200 dark:border-white/[0.08]">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/[0.05]">
         <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
           {tieuDe} ({rows.length})
         </span>
         <span className="text-xs text-gray-400">{goiY}</span>
       </div>
-      <div className="max-h-[35vh] overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {nhom.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">{rong}</p>
         ) : (

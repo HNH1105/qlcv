@@ -35,6 +35,9 @@ function Content() {
   // [MỚI] Bỏ đánh dấu "là của Phòng" — dòng đang chờ xác nhận + trạng thái đang xử lý.
   const [dongCanBoDanhDau, setDongCanBoDanhDau] = useState<KeHoachRow | null>(null);
   const [isBoDanhDauPending, setIsBoDanhDauPending] = useState(false);
+  // [MỚI] Hỏi xác nhận trước khi "Đánh dấu là của Phòng" (trước đây bấm là đánh dấu luôn).
+  const [idCanDanhDau, setIdCanDanhDau] = useState<number | null>(null);
+  const [isDanhDauPending, setIsDanhDauPending] = useState(false);
 
   const reload = useCallback(() => {
     setIsLoading(true);
@@ -49,13 +52,18 @@ function Content() {
     reload();
   }, [reload]);
 
-  async function handleConvert(id: number) {
+  async function handleConfirmDanhDau() {
+    if (idCanDanhDau === null) return;
+    setIsDanhDauPending(true);
     try {
-      await danhDauLaCuaPhong(id);
+      await danhDauLaCuaPhong(idCanDanhDau);
       show("success", "Đã chuyển thành công", "Đã chuyển thành Báo cáo Phòng");
       reload();
     } catch (e) {
-      show("error", "Chuyển thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      show("error", "Đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsDanhDauPending(false);
+      setIdCanDanhDau(null);
     }
   }
 
@@ -93,12 +101,24 @@ function Content() {
         ) : (
           <ToanBoPhongList
             rows={rows}
-            onConvert={handleConvert}
+            onConvert={setIdCanDanhDau}
             onUnmark={setDongCanBoDanhDau}
             loai="BAOCAO"
           />
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={idCanDanhDau !== null}
+        title="Đánh dấu là BC Phòng"
+        description="Bạn chắc chắn muốn đánh dấu mục này là Báo cáo Phòng?"
+        confirmText="Đánh dấu"
+        isLoading={isDanhDauPending}
+        onConfirm={handleConfirmDanhDau}
+        onClose={() => {
+          if (!isDanhDauPending) setIdCanDanhDau(null);
+        }}
+      />
 
       <ConfirmDialog
         isOpen={dongCanBoDanhDau !== null}
