@@ -7,6 +7,7 @@ import Checkbox from "@/components/form/input/Checkbox";
 import {
   markHoanThanh,
   danhDauLaCuaPhong,
+  huyDanhDauLaCuaPhong,
   loaiKhoiPhong,
   xoaKeHoachBaoCao,
   type KeHoachRow,
@@ -22,7 +23,14 @@ import { useToast } from "./ToastProvider";
 import { formatDateTimeVN, formatDateVN, isTrongKhungSuaFull, isCungNgayHomNay } from "@/lib/week";
 import { LoaiGhiNhan } from "@prisma/client";
 
-type ConfirmAction = "hoanThanh" | "boHoanThanh" | "chuyenPhong" | "loaiPhong" | "xoa" | null;
+type ConfirmAction =
+  | "hoanThanh"
+  | "boHoanThanh"
+  | "chuyenPhong"
+  | "huyChuyenPhong"
+  | "loaiPhong"
+  | "xoa"
+  | null;
 type NhanVien = { maNV: string; hoTen: string; maPhong: string };
 
 export default function KeHoachBaoCaoItemCard({
@@ -77,6 +85,16 @@ export default function KeHoachBaoCaoItemCard({
   // ẩn/hiện nút Xoá cho gọn — chốt chặn THẬT SỰ nằm ở server action xoaKeHoachBaoCao (ke-hoach.ts),
   // tự kiểm tra lại y hệt điều kiện này, không tin giá trị này gửi từ client.
   const coTheXoa = row.nguoiTao.maNV === user?.maNV && isCungNgayHomNay(row.taoLuc);
+
+  // "Huỷ đánh dấu KH/BC Phòng": chỉ người tạo, dòng của cá nhân đã được đánh dấu là của Phòng, và
+  // đúng khung tuần (cùng khung với "Sửa"). Chỉ để ẩn/hiện — server action huyDanhDauLaCuaPhong tự
+  // kiểm tra lại toàn bộ.
+  const coTheHuyDanhDauPhong =
+    allowConvertToPhong &&
+    row.laCuaPhong &&
+    row.laCuaCaNhan &&
+    row.nguoiTao.maNV === user?.maNV &&
+    canEditFull;
 
   // Danh sách đồng nghiệp cùng phòng + danh sách Phòng — CHỈ cần tải khi thực sự mở modal Sửa VÀ
   // dòng đang trong khung sửa full (tránh gọi API thừa cho phần lớn trường hợp không cần tới).
@@ -143,6 +161,24 @@ export default function KeHoachBaoCaoItemCard({
       onChanged();
     } catch (e) {
       show("error", "Đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsPending(false);
+      setConfirmAction(null);
+    }
+  }
+
+  async function handleConfirmHuyConvert() {
+    setIsPending(true);
+    try {
+      await huyDanhDauLaCuaPhong(row.id);
+      show(
+        "success",
+        "Đã huỷ đánh dấu",
+        `Mục này không còn là ${isKeHoach ? "KH Phòng" : "BC Phòng"}`
+      );
+      onChanged();
+    } catch (e) {
+      show("error", "Huỷ đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
     } finally {
       setIsPending(false);
       setConfirmAction(null);
@@ -317,6 +353,18 @@ export default function KeHoachBaoCaoItemCard({
             </DropdownItem>
           )}
 
+          {coTheHuyDanhDauPhong && (
+            <DropdownItem
+              onItemClick={() => {
+                setIsMenuOpen(false);
+                setConfirmAction("huyChuyenPhong");
+              }}
+              className="rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              ↩ Huỷ đánh dấu {isKeHoach ? "KH Phòng" : "BC Phòng"}
+            </DropdownItem>
+          )}
+
           {/* "Sửa" — MỤC MENU MỚI, RIÊNG với "Cập nhật kết quả/ghi chú" bên dưới. CHỈ hiện khi
               canEditFull=true (đúng khung tuần cho phép). Mở SuaNoiDungModal — chỉ có Nội dung/Hạn
               xử lý/Người phối hợp, không có Kết quả/Ghi chú/Tiến độ. */}
@@ -445,6 +493,16 @@ export default function KeHoachBaoCaoItemCard({
         confirmText="Đánh dấu"
         isLoading={isPending}
         onConfirm={handleConfirmConvert}
+        onClose={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === "huyChuyenPhong"}
+        title={`Huỷ đánh dấu ${isKeHoach ? "KH Phòng" : "BC Phòng"}`}
+        description={`Bạn muốn huỷ đánh dấu ${isKeHoach ? "kế hoạch" : "báo cáo"} này là ${isKeHoach ? "kế hoạch" : "báo cáo"} phòng? Mục vẫn giữ nguyên trong ${isKeHoach ? "kế hoạch" : "báo cáo"} cá nhân của bạn.`}
+        confirmText="Huỷ đánh dấu"
+        isLoading={isPending}
+        onConfirm={handleConfirmHuyConvert}
         onClose={() => setConfirmAction(null)}
       />
 

@@ -85,3 +85,59 @@ export async function traCuuKeHoachBaoCao(params: {
     tienDo: r.tienDo,
   }));
 }
+
+// ==========================================================================================
+// [MỚI] BIÊN TẬP TRƯỚC KHI XUẤT WORD (chỉ LĐ phòng + Admin)
+// ==========================================================================================
+// Trả về CẢ HAI loại dòng của tuần đó: dòng đang là của Phòng (laCuaPhong=true) và dòng cá nhân
+// chưa vào Phòng (laCuaCaNhan=true, laCuaPhong=false). Client tự chia 2 danh sách và cho người dùng
+// chuyển qua lại — mọi thao tác chỉ nằm ở client, KHÔNG ghi gì vào DB. File Word xuất ra được dựng
+// trong bộ nhớ và trả thẳng về trình duyệt (xem POST /api/xuat-word/phong), không lưu trên server.
+export type BienTapRow = {
+  id: number;
+  noiDung: string;
+  maPhong: string;
+  tenPhong: string;
+  thuTuPhong: number;
+  laCuaPhong: boolean;
+  nguoiTao: { maNV: string; hoTen: string };
+};
+
+export async function getDuLieuBienTapXuatWord(params: {
+  nam: number;
+  tuan: number;
+  loai: LoaiGhiNhan;
+  maPhong?: string; // undefined = tất cả các phòng
+}): Promise<BienTapRow[]> {
+  const session = await requireSession();
+  if (!session.isAdmin && session.quyen !== "LANHDAOPHONG") {
+    throw new Error("Chỉ Lãnh đạo phòng hoặc Admin mới được biên tập trước khi xuất Word");
+  }
+  const { nam, tuan, loai, maPhong } = params;
+
+  const rows = await prisma.keHoachTuan.findMany({
+    where: {
+      nam,
+      tuan,
+      loai,
+      isDeleted: false,
+      ...(maPhong ? { maPhong } : {}),
+      OR: [{ laCuaPhong: true }, { laCuaCaNhan: true }],
+    },
+    orderBy: [{ phong: { thuTu: "asc" } }, { maPhong: "asc" }, { id: "asc" }],
+    include: {
+      phong: { select: { tenPhong: true, thuTu: true } },
+      nhanVien: { select: { maNV: true, hoTen: true } },
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    noiDung: r.noiDung,
+    maPhong: r.maPhong,
+    tenPhong: r.phong.tenPhong,
+    thuTuPhong: r.phong.thuTu,
+    laCuaPhong: r.laCuaPhong,
+    nguoiTao: { maNV: r.nhanVien.maNV, hoTen: r.nhanVien.hoTen },
+  }));
+}

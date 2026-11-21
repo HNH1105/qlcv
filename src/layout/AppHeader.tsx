@@ -1,5 +1,6 @@
 "use client";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
+import TuanHienTaiLabel from "@/components/common/TuanHienTaiLabel";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
@@ -98,7 +99,12 @@ const AppHeader: React.FC = () => {
               src="/images/logo/logo-syt.svg"
               alt="Logo"
             />
-               Hệ thống QLCV</div>
+            {/* Tên hệ thống + dòng "Tuần hiện tại (...)" chữ đỏ nhỏ ngay bên dưới (mobile) */}
+            <div className="flex flex-col leading-tight">
+              <span>Hệ thống QLCV</span>
+              <TuanHienTaiLabel className="mt-0.5 text-[11px] font-medium text-red-600 dark:text-red-400" />
+            </div>
+          </div>
           </Link>
 
           <button

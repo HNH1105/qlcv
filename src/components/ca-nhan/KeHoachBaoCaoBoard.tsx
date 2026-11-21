@@ -89,6 +89,17 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
     reload();
   }, [reload]);
 
+  // ==================== [MỚI] XEM KÈM KẾ HOẠCH CÙNG TUẦN (chỉ màn Báo cáo) ====================
+  // Kế hoạch tuần N (lên từ tuần N-1) là 1 phần của Báo cáo tuần N. Ô tick mặc định TẮT, không nhớ
+  // qua lần vào sau. Khi bật: tải Kế hoạch CÁ NHÂN của CHÍNH người đang đăng nhập, ĐÚNG tuần đang
+  // chọn, hiển thị phía DƯỚI danh sách Báo cáo bằng đúng KeHoachBaoCaoItemCard (loai="KEHOACH") —
+  // nên mọi thao tác (hoàn thành, cập nhật kết quả/tiến độ, sửa, đánh dấu phòng...) dùng lại nguyên
+  // logic + kiểm tra quyền/khung tuần sẵn có ở server, không viết thêm nhánh xử lý riêng nào.
+  // Phần tải/hiển thị nằm trong component riêng KeHoachTuanNaySection (cuối file) — chỉ được MOUNT
+  // khi ô tick bật, và gắn key theo tuần, nên tắt ô tick hoặc đổi tuần là component cũ bị huỷ hẳn
+  // (không thể hiện nhầm dữ liệu tuần cũ, không cần tự dọn state).
+  const [xemKemKeHoach, setXemKemKeHoach] = useState(false);
+
   // Đổi tuần hoặc đổi tab thì bỏ chọn hàng loạt cũ đi, tránh cập nhật nhầm dòng không còn hiển thị.
   // LƯU Ý: đây là NƠI DUY NHẤT statusTab bị thay đổi ngoài thao tác click của người dùng — và nó
   // không hề gán lại statusTab, chỉ dọn selectedIds. Nếu bạn thấy giao diện tự "nhảy" sang tab
@@ -188,6 +199,18 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
               ))}
             </select>
           )}
+
+          {isBaoCao && (
+            <label className="flex h-[42px] cursor-pointer select-none items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+              <input
+                type="checkbox"
+                checked={xemKemKeHoach}
+                onChange={(e) => setXemKemKeHoach(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-brand-500"
+              />
+              Xem kèm kế hoạch
+            </label>
+          )}
         </div>
 
         <button
@@ -263,6 +286,13 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
             ))}
           </div>
         )}
+
+        {/* [MỚI] Khối "Kế hoạch tuần này" — PHÍA DƯỚI danh sách Báo cáo, chỉ khi bật ô tick. Không
+            có checkbox chọn hàng loạt (onToggleSelect=undefined) để không lẫn với thao tác hàng
+            loạt; mọi thao tác đơn lẻ qua menu 3 chấm của từng card như bên màn Kế hoạch. */}
+        {isBaoCao && xemKemKeHoach && (
+          <KeHoachTuanNaySection key={`${nam}-${tuan}`} nam={nam} tuan={tuan} />
+        )}
       </div>
 
       <AddKeHoachBaoCaoModal
@@ -305,6 +335,87 @@ function BoardContent({ loai }: { loai: LoaiGhiNhan }) {
         onConfirm={handleBulkMarkHoanThanh}
         onClose={() => setIsBulkMarkConfirmOpen(false)}
       />
+    </div>
+  );
+}
+
+// ==================== [MỚI] KHỐI "KẾ HOẠCH TUẦN NÀY" (dưới danh sách Báo cáo) ====================
+// Chỉ được mount khi ô tick "Xem kèm kế hoạch" đang bật, và có key = tuần đang chọn (xem
+// chỗ gọi) — đổi tuần / tắt ô tick là component này bị huỷ, mount lại từ đầu với isLoading=true.
+// Nhờ vậy:
+//   - không bao giờ hiện nhầm kế hoạch của tuần khác (kết quả trả về trễ của tuần cũ rơi vào
+//     component đã huỷ, bị bỏ qua nhờ cờ `conHieuLuc`);
+//   - không phải gọi setState đồng bộ trong useEffect (đúng quy tắc react-hooks của dự án).
+// Chỉ ĐỌC kế hoạch cá nhân của chính người đăng nhập (getKeHoachCaNhan tự lọc theo session).
+function KeHoachTuanNaySection({ nam, tuan }: { nam: number; tuan: number }) {
+  const { show } = useToast();
+  const [rows, setRows] = useState<KeHoachRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let conHieuLuc = true;
+    getKeHoachCaNhan(nam, tuan, "KEHOACH")
+      .then((data) => {
+        if (conHieuLuc) setRows(data);
+      })
+      .catch((e) => {
+        if (conHieuLuc) {
+          show("error", "Không tải được kế hoạch tuần này", e instanceof Error ? e.message : "Có lỗi xảy ra");
+        }
+      })
+      .finally(() => {
+        if (conHieuLuc) setIsLoading(false);
+      });
+    return () => {
+      conHieuLuc = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nam, tuan]);
+
+  // Gọi sau mỗi thao tác trên 1 card kế hoạch (hoàn thành, cập nhật kết quả...) — tải lại im lặng,
+  // giữ nguyên danh sách đang hiện trong lúc chờ (không nháy spinner).
+  function taiLai() {
+    getKeHoachCaNhan(nam, tuan, "KEHOACH")
+      .then(setRows)
+      .catch((e) =>
+        show("error", "Không tải lại được kế hoạch", e instanceof Error ? e.message : "Có lỗi xảy ra")
+      );
+  }
+
+  const soHoanThanh = rows.filter((r) => r.daHoanThanh).length;
+
+  // Không có checkbox chọn hàng loạt (không truyền onToggleSelect) để không lẫn với thao tác hàng
+  // loạt; mọi thao tác đơn lẻ qua menu 3 chấm của từng card như bên màn Kế hoạch.
+  return (
+    <div className="mt-2 border-t border-dashed border-gray-200 pt-5 dark:border-white/[0.08]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
+          Kế hoạch tuần {tuan}/{nam}{" "}
+          <span className="font-normal text-gray-400">(đã lên từ tuần trước)</span>
+        </p>
+        {!isLoading && rows.length > 0 && (
+          <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-400">
+            Hoàn thành {soHoanThanh}/{rows.length}
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-gray-400">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-brand-500" />
+          Đang tải kế hoạch...
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-8 text-center text-sm text-gray-400">
+          Không có kế hoạch nào cho tuần {tuan}/{nam}.
+        </p>
+      ) : (
+        <div className="space-y-3 rounded-xl bg-gray-50 p-3 dark:bg-white/[0.02]">
+          {rows.map((row) => (
+            <KeHoachBaoCaoItemCard key={`kh-${row.id}`} row={row} loai="KEHOACH" onChanged={taiLai} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

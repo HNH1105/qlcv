@@ -373,11 +373,27 @@ export async function updateKetQuaGhiChu(
 // ==================== ĐÁNH DẤU LÀ CỦA PHÒNG (1 dòng — tên cũ: convertCaNhanToPhong) ============
 // TRƯỚC ĐÂY: tạo 1 dòng MỚI (capDo=PHONG) trỏ nguonId về dòng này. NAY: chỉ set laCuaPhong=true
 // NGAY TRÊN DÒNG NÀY + ghi audit (nguoiDanhDauPhongId/thoiGianDanhDauPhong) — không tạo thêm gì cả.
+// [BỔ SUNG QUYỀN] Ai được "Đánh dấu là của Phòng": chính người nhập dòng đó, Admin, hoặc lãnh đạo
+// (LĐ phòng / LĐ đơn vị) của ĐÚNG phòng của dòng đó. Trước đây 2 hàm đánh dấu bên dưới KHÔNG kiểm
+// tra gì — ai đăng nhập cũng gọi thẳng server action đánh dấu được dòng của người khác.
+function coQuyenDanhDauPhong(
+  user: { maNV: string; maPhong: string; quyen: string; isAdmin: boolean },
+  row: { maNV: string; maPhong: string }
+) {
+  if (row.maNV === user.maNV) return true;
+  if (user.isAdmin) return true;
+  const laLanhDao = user.quyen === "LANHDAOPHONG" || user.quyen === "LANHDAODONVI";
+  return laLanhDao && user.maPhong === row.maPhong;
+}
+
 export async function danhDauLaCuaPhong(id: number) {
   const user = await requireSession();
 
   const row = await prisma.keHoachTuan.findUnique({ where: { id } });
   if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+  if (!coQuyenDanhDauPhong(user, row)) {
+    throw new Error("Bạn không có quyền đánh dấu mục này là của Phòng");
+  }
   if (row.laCuaPhong) return { success: true, alreadyMarked: true };
 
   await prisma.keHoachTuan.update({
@@ -399,8 +415,20 @@ export async function danhDauLaCuaPhongBulk(ids: number[]) {
   const user = await requireSession();
   if (ids.length === 0) return { success: true, updated: 0, boQua: 0 };
 
+  // [BỔ SUNG QUYỀN] Chỉ cập nhật những dòng người này có quyền (cùng quy tắc coQuyenDanhDauPhong) —
+  // dòng không có quyền bị bỏ qua và tính vào `boQua`, giống dòng đã là của Phòng từ trước.
+  const laLanhDao = user.quyen === "LANHDAOPHONG" || user.quyen === "LANHDAODONVI";
+  const dieuKienQuyen = user.isAdmin
+    ? {}
+    : {
+        OR: [
+          { maNV: user.maNV },
+          ...(laLanhDao ? [{ maPhong: user.maPhong }] : []),
+        ],
+      };
+
   const result = await prisma.keHoachTuan.updateMany({
-    where: { id: { in: ids }, isDeleted: false, laCuaPhong: false },
+    where: { id: { in: ids }, isDeleted: false, laCuaPhong: false, ...dieuKienQuyen },
     data: {
       laCuaPhong: true,
       nguoiDanhDauPhongId: user.maNV,
@@ -561,4 +589,95 @@ export async function xoaKeHoachBaoCao(id: number) {
 
   revalidateAllLienQuan();
   return { success: true };
+}
+
+// ==================== [MỚI] HUỶ ĐÁNH DẤU "LÀ CỦA PHÒNG" — chỉ trong khung tuần ==================
+// Ngược lại với danhDauLaCuaPhong: set laCuaPhong=false trên chính dòng đó, dòng vẫn còn nguyên ở
+// Kế hoạch/Báo cáo cá nhân. Khác loaiKhoiPhong (LĐ phòng loại bất kỳ lúc nào) — hàm này dành cho
+// CHÍNH NGƯỜI TẠO tự rút lại, với các điều kiện (server tự đọc lại từ DB, không tin client):
+//   1. Chỉ người tạo dòng (row.maNV === người đang đăng nhập).
+//   2. Dòng phải là của cá nhân (laCuaCaNhan=true) — dòng nhập thẳng ở cấp Phòng (laCuaCaNhan=false)
+//      không huỷ được, vì huỷ xong dòng sẽ không còn hiện ở đâu cả.
+//   3. Đúng khung tuần — dùng lại isTrongKhungSuaFull(): Báo cáo = tuần hiện tại, Kế hoạch = tuần
+//      kế tiếp tuần hiện tại (cùng khung với chức năng "Sửa").
+export async function huyDanhDauLaCuaPhong(id: number) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+  if (!row.laCuaPhong) return { success: true, alreadyUnmarked: true };
+
+  if (row.maNV !== user.maNV) {
+    throw new Error("Bạn chỉ được huỷ đánh dấu dòng do chính mình nhập");
+  }
+  if (!row.laCuaCaNhan) {
+    throw new Error("Mục này được nhập trực tiếp ở cấp Phòng, không thể huỷ đánh dấu");
+  }
+  if (!isTrongKhungSuaFull(row.loai, row.nam, row.tuan)) {
+    throw new Error(
+      row.loai === "BAOCAO"
+        ? "Chỉ được huỷ đánh dấu Báo cáo phòng trong tuần hiện tại"
+        : "Chỉ được huỷ đánh dấu Kế hoạch phòng của tuần kế tiếp (trước khi sang tuần đó)"
+    );
+  }
+
+  // updateMany kèm điều kiện laCuaPhong=true để chống bấm trùng/đua nhau.
+  await prisma.keHoachTuan.updateMany({
+    where: { id, isDeleted: false, laCuaPhong: true },
+    data: {
+      laCuaPhong: false,
+      nguoiDanhDauPhongId: null,
+      thoiGianDanhDauPhong: null,
+      nguoiCapNhatId: user.maNV,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true, alreadyUnmarked: false };
+}
+
+// ==================== [MỚI] LÃNH ĐẠO BỎ ĐÁNH DẤU "LÀ CỦA PHÒNG" — chỉ trong khung tuần ===========
+// Dùng ở 2 màn "Cá nhân -> Kế hoạch/Báo cáo (Toàn bộ phòng)". KHÁC loaiKhoiPhong (màn Phòng, không
+// giới hạn tuần — GIỮ NGUYÊN, không đổi) ở chỗ có thêm giới hạn khung tuần. Điều kiện (server tự
+// đọc lại từ DB, không tin client):
+//   1. Lãnh đạo (LĐ phòng / LĐ đơn vị) của ĐÚNG phòng của dòng đó, hoặc Admin.
+//   2. Dòng phải là của cá nhân (laCuaCaNhan=true) — 2 màn này chỉ hiển thị dòng cá nhân; dòng
+//      nhập thẳng ở cấp Phòng không bỏ được ở đây (bỏ xong sẽ không còn hiện ở đâu cả).
+//   3. Đúng khung tuần — isTrongKhungSuaFull(): Báo cáo = tuần hiện tại, Kế hoạch = tuần kế tiếp.
+// Ghi audit vào nguoiLoaiKhoiPhongId/thoiGianLoaiKhoiPhong (cùng cột với loaiKhoiPhong).
+export async function lanhDaoBoDanhDauLaCuaPhong(id: number) {
+  const user = await requireSession();
+
+  const row = await prisma.keHoachTuan.findUnique({ where: { id } });
+  if (!row || row.isDeleted) throw new Error("Không tìm thấy dòng này");
+  if (!row.laCuaPhong) return { success: true, alreadyUnmarked: true };
+
+  const laLanhDao = user.quyen === "LANHDAOPHONG" || user.quyen === "LANHDAODONVI";
+  if (!user.isAdmin && !(laLanhDao && user.maPhong === row.maPhong)) {
+    throw new Error("Bạn không có quyền bỏ đánh dấu mục này khỏi Phòng");
+  }
+  if (!row.laCuaCaNhan) {
+    throw new Error("Mục này được nhập trực tiếp ở cấp Phòng, không bỏ đánh dấu ở đây được");
+  }
+  if (!isTrongKhungSuaFull(row.loai, row.nam, row.tuan)) {
+    throw new Error(
+      row.loai === "BAOCAO"
+        ? "Chỉ được bỏ đánh dấu Báo cáo phòng trong tuần hiện tại"
+        : "Chỉ được bỏ đánh dấu Kế hoạch phòng của tuần kế tiếp (trước khi sang tuần đó)"
+    );
+  }
+
+  // updateMany kèm điều kiện laCuaPhong=true để chống bấm trùng/đua nhau.
+  await prisma.keHoachTuan.updateMany({
+    where: { id, isDeleted: false, laCuaPhong: true },
+    data: {
+      laCuaPhong: false,
+      nguoiLoaiKhoiPhongId: user.maNV,
+      thoiGianLoaiKhoiPhong: new Date(),
+      nguoiCapNhatId: user.maNV,
+    },
+  });
+
+  revalidateAllLienQuan();
+  return { success: true, alreadyUnmarked: false };
 }

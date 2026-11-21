@@ -5,8 +5,10 @@ import { getCurrentWeekInfo, isoWeeksInYear, getWeekDateRangeLabel } from "@/lib
 import {
   getKeHoachToanPhong,
   danhDauLaCuaPhong,
+  lanhDaoBoDanhDauLaCuaPhong,
   type KeHoachRow,
 } from "@/lib/actions/ke-hoach";
+import ConfirmDialog from "./ConfirmDialog";
 import WeekSelect from "./WeekSelect";
 import ToanBoPhongList from "./ToanBoPhongList";
 import ToastProvider, { useToast } from "./ToastProvider";
@@ -60,6 +62,12 @@ function Content() {
   const [xuLyFilter, setXuLyFilter] = useState<XuLyFilter>("tatCa");
   const [rows, setRows] = useState<KeHoachRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // [MỚI] Bỏ đánh dấu "là của Phòng" — dòng đang chờ xác nhận + trạng thái đang xử lý.
+  const [dongCanBoDanhDau, setDongCanBoDanhDau] = useState<KeHoachRow | null>(null);
+  const [isBoDanhDauPending, setIsBoDanhDauPending] = useState(false);
+  // [MỚI] Hỏi xác nhận trước khi "Đánh dấu là của Phòng" (trước đây bấm là đánh dấu luôn).
+  const [idCanDanhDau, setIdCanDanhDau] = useState<number | null>(null);
+  const [isDanhDauPending, setIsDanhDauPending] = useState(false);
 
   const reload = useCallback(() => {
     setIsLoading(true);
@@ -95,13 +103,33 @@ function Content() {
     return result;
   }, [rows, statusFilter, xuLyFilter]);
 
-  async function handleConvert(id: number) {
+  async function handleConfirmDanhDau() {
+    if (idCanDanhDau === null) return;
+    setIsDanhDauPending(true);
     try {
-      await danhDauLaCuaPhong(id);
+      await danhDauLaCuaPhong(idCanDanhDau);
       show("success", "Đã đánh dấu thành công", "Đã đánh dấu là Kế hoạch Phòng");
       reload();
     } catch (e) {
       show("error", "Đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsDanhDauPending(false);
+      setIdCanDanhDau(null);
+    }
+  }
+
+  async function handleConfirmBoDanhDau() {
+    if (!dongCanBoDanhDau) return;
+    setIsBoDanhDauPending(true);
+    try {
+      await lanhDaoBoDanhDauLaCuaPhong(dongCanBoDanhDau.id);
+      show("success", "Đã bỏ đánh dấu", "Mục này không còn là Kế hoạch Phòng");
+      reload();
+    } catch (e) {
+      show("error", "Bỏ đánh dấu thất bại", e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setIsBoDanhDauPending(false);
+      setDongCanBoDanhDau(null);
     }
   }
 
@@ -148,9 +176,40 @@ function Content() {
             Đang tải...
           </div>
         ) : (
-          <ToanBoPhongList rows={filteredRows} onConvert={handleConvert} loai="KEHOACH" />
+          <ToanBoPhongList
+            rows={filteredRows}
+            onConvert={setIdCanDanhDau}
+            onUnmark={setDongCanBoDanhDau}
+            loai="KEHOACH"
+          />
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={idCanDanhDau !== null}
+        title="Đánh dấu là KH Phòng"
+        description="Bạn chắc chắn muốn đánh dấu mục này là Kế hoạch Phòng?"
+        confirmText="Đánh dấu"
+        isLoading={isDanhDauPending}
+        onConfirm={handleConfirmDanhDau}
+        onClose={() => {
+          if (!isDanhDauPending) setIdCanDanhDau(null);
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={dongCanBoDanhDau !== null}
+        title="Bỏ đánh dấu KH Phòng"
+        description={`Bạn chắc chắn muốn bỏ đánh dấu mục này khỏi Kế hoạch Phòng?${
+          dongCanBoDanhDau ? ` Mục vẫn giữ nguyên trong kế hoạch cá nhân của ${dongCanBoDanhDau.nguoiTao.hoTen}.` : ""
+        }`}
+        confirmText="Bỏ đánh dấu"
+        isLoading={isBoDanhDauPending}
+        onConfirm={handleConfirmBoDanhDau}
+        onClose={() => {
+          if (!isBoDanhDauPending) setDongCanBoDanhDau(null);
+        }}
+      />
     </div>
   );
 }
