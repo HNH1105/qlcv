@@ -1,18 +1,16 @@
-// ĐÍCH: src/lib/nhac-viec/ke-hoach.ts (MỚI)
+// ĐÍCH: src/lib/nhac-viec/ke-hoach.ts
 // Cùng nguyên tắc với nhac-viec/nhiem-vu.ts: viết ĐỘC LẬP, không import/sửa src/lib/actions/ke-hoach.ts.
+// Chỉ tính Kế hoạch của NĂM CỦA TUẦN HIỆN TẠI (trường nam) — xem dieuKienKeHoach() ở ./dem.ts.
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { mocThoiGianVN, laDungHan } from "./moc-thoi-gian";
+import { demKeHoach, dieuKienKeHoach, type TongQuanKeHoach } from "./dem";
+import { getKeHoachTheoIds, type KeHoachRow } from "@/lib/actions/ke-hoach";
 
-export type TongQuanKeHoach = {
-  tong: number;
-  chuaxuly: number;
-  chuaxulyquahan: number;
-  hoanthanh: number;
-  hoanthanhDungHan: number;
-  hoanthanhQuaHan: number;
-};
+export type { TongQuanKeHoach };
 
 export type KeHoachNhacViecRow = {
   id: number;
@@ -25,53 +23,16 @@ export type KeHoachNhacViecRow = {
   daHoanThanh: boolean;
 };
 
-// Đúng hạn nếu: không đặt hạn, hoặc hoàn thành trước/trong ngày hạn (23:59:59 ngày đó).
-function laDungHan(hanXuLy: Date | null, thoiGianHoanThanh: Date | null): boolean {
-  if (!hanXuLy || !thoiGianHoanThanh) return true;
-  const hanCuoiNgay = new Date(hanXuLy);
-  hanCuoiNgay.setHours(23, 59, 59, 999);
-  return thoiGianHoanThanh.getTime() <= hanCuoiNgay.getTime();
-}
-
-function tinhTongQuan(
-  rows: { daHoanThanh: boolean; hanXuLy: Date | null; thoiGianHoanThanh: Date | null }[]
-): TongQuanKeHoach {
-  const homNay = new Date();
-  homNay.setHours(0, 0, 0, 0);
-  const tk: TongQuanKeHoach = {
-    tong: rows.length, chuaxuly: 0, chuaxulyquahan: 0, hoanthanh: 0, hoanthanhDungHan: 0, hoanthanhQuaHan: 0,
-  };
-  for (const r of rows) {
-    if (r.daHoanThanh) {
-      tk.hoanthanh++;
-      laDungHan(r.hanXuLy, r.thoiGianHoanThanh) ? tk.hoanthanhDungHan++ : tk.hoanthanhQuaHan++;
-    } else {
-      tk.chuaxuly++;
-      if (r.hanXuLy && r.hanXuLy < homNay) tk.chuaxulyquahan++;
-    }
-  }
-  return tk;
-}
-
-/** Kế hoạch CÁ NHÂN của người đang đăng nhập — toàn bộ (không giới hạn tuần), chỉ loai=KEHOACH. */
+/** Kế hoạch CÁ NHÂN của người đang đăng nhập — năm của tuần hiện tại, chỉ loai=KEHOACH. */
 export async function getTongQuanKeHoachCaNhan(): Promise<TongQuanKeHoach> {
   const session = await requireSession();
-  const rows = await prisma.keHoachTuan.findMany({
-    where: { loai: "KEHOACH", laCuaCaNhan: true, maNV: session.maNV, isDeleted: false },
-    select: { daHoanThanh: true, hanXuLy: true, thoiGianHoanThanh: true },
-  });
-  return tinhTongQuan(rows);
+  return demKeHoach(dieuKienKeHoach("canhan", session));
 }
 
-/** Kế hoạch PHÒNG của phòng người đang đăng nhập — ai trong phòng cũng xem được, giống nguyên tắc
- * đã áp dụng ở KeHoachBaoCaoPhongBoard, không giới hạn riêng cho lãnh đạo. */
+/** Kế hoạch PHÒNG của phòng người đang đăng nhập — ai trong phòng cũng xem được. */
 export async function getTongQuanKeHoachPhong(): Promise<TongQuanKeHoach> {
   const session = await requireSession();
-  const rows = await prisma.keHoachTuan.findMany({
-    where: { loai: "KEHOACH", laCuaPhong: true, maPhong: session.maPhong, isDeleted: false },
-    select: { daHoanThanh: true, hanXuLy: true, thoiGianHoanThanh: true },
-  });
-  return tinhTongQuan(rows);
+  return demKeHoach(dieuKienKeHoach("phong", session));
 }
 
 // ============================== CHI TIẾT (dùng chung cho /nhac-viec/chi-tiet) ==============================
@@ -80,36 +41,26 @@ export type PhamViKeHoach = "canhan" | "phong";
 
 export async function getChiTietKeHoach(phamvi: PhamViKeHoach, tinhtrang: string): Promise<KeHoachNhacViecRow[]> {
   const session = await requireSession();
-  const homNay = new Date();
-  homNay.setHours(0, 0, 0, 0);
+  const { homNay } = mocThoiGianVN();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { loai: "KEHOACH", isDeleted: false };
-  if (phamvi === "canhan") {
-    where.laCuaCaNhan = true;
-    where.maNV = session.maNV;
-  } else {
-    where.laCuaPhong = true;
-    where.maPhong = session.maPhong;
-  }
-
+  // Cùng điều kiện với phần đếm (phạm vi + năm của tuần hiện tại) để số dòng khớp con số đã bấm.
+  const dk: Prisma.KeHoachTuanWhereInput[] = [dieuKienKeHoach(phamvi, session)];
   switch (tinhtrang) {
     case "chuaxuly":
-      where.daHoanThanh = false;
+      dk.push({ daHoanThanh: false });
       break;
     case "chuaxulyquahan":
-      where.daHoanThanh = false;
-      where.hanXuLy = { lt: homNay };
+      dk.push({ daHoanThanh: false, hanXuLy: { lt: homNay } });
       break;
     case "hoanthanh":
     case "hoanthanh-dunghan":
     case "hoanthanh-quahan":
-      where.daHoanThanh = true;
+      dk.push({ daHoanThanh: true });
       break;
   }
 
   const rows = await prisma.keHoachTuan.findMany({
-    where,
+    where: { AND: dk },
     select: {
       id: true, nam: true, tuan: true, noiDung: true, hanXuLy: true,
       daHoanThanh: true, thoiGianHoanThanh: true,
@@ -131,4 +82,16 @@ export async function getChiTietKeHoach(phamvi: PhamViKeHoach, tinhtrang: string
     tenPhong: r.phong.tenPhong, nguoiTao: r.nhanVien.hoTen,
     hanXuLy: r.hanXuLy, daHoanThanh: r.daHoanThanh,
   }));
+}
+
+// [MỚI] Như getChiTietKeHoach nhưng trả về DÒNG ĐẦY ĐỦ (KeHoachRow) — để trang chi tiết hiển thị
+// bằng card KeHoachBaoCaoItemCard có menu thao tác (hoàn thành, cập nhật kết quả, sửa...). Lọc +
+// sắp xếp giữ y hệt getChiTietKeHoach (khớp con số đã bấm), sau đó lấy dữ liệu đầy đủ theo id.
+// Cố ý dùng lại hàm của lib/actions/ke-hoach.ts để card nhận đúng cấu trúc dữ liệu nó cần.
+export async function getChiTietKeHoachDayDu(phamvi: PhamViKeHoach, tinhtrang: string): Promise<KeHoachRow[]> {
+  const ds = await getChiTietKeHoach(phamvi, tinhtrang);
+  // Gom theo tuần (tuần mới nhất lên đầu) để trang chi tiết hiện tiêu đề "Tuần x/y" liền mạch;
+  // trong cùng tuần giữ nguyên thứ tự theo hạn xử lý (sort ổn định).
+  const theoTuan = [...ds].sort((a, b) => b.nam - a.nam || b.tuan - a.tuan);
+  return getKeHoachTheoIds(theoTuan.map((r) => r.id));
 }

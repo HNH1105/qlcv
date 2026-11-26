@@ -1,23 +1,16 @@
 // ĐÍCH: src/components/nhac-viec/KeHoachSection.tsx
 "use client";
-import { useEffect, useState } from "react";
 import ChiSoLink from "./ChiSoLink";
 import type { TongQuanKeHoach } from "@/lib/nhac-viec/ke-hoach";
 
+// Số liệu do TrangNhacViec tải 1 lần cho cả trang rồi truyền xuống (tk=null: đang tải).
 export default function KeHoachSection({
-  tieuDe, phamvi, taiDuLieu,
+  tieuDe, phamvi, tk,
 }: {
   tieuDe: string;
   phamvi: "canhan" | "phong";
-  taiDuLieu: () => Promise<TongQuanKeHoach>;
+  tk: TongQuanKeHoach | null;
 }) {
-  const [tk, setTk] = useState<TongQuanKeHoach | null>(null);
-
-  useEffect(() => {
-    taiDuLieu().then(setTk);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function href(tt: string) {
     return `/nhac-viec/chi-tiet?nguon=kehoach-${phamvi === "canhan" ? "canhan" : "phong"}&phamvi=${phamvi}&tinhtrang=${tt}`;
   }

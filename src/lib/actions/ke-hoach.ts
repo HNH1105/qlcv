@@ -681,3 +681,29 @@ export async function lanhDaoBoDanhDauLaCuaPhong(id: number) {
   revalidateAllLienQuan();
   return { success: true, alreadyUnmarked: false };
 }
+
+// ==================== [MỚI] LẤY ĐẦY ĐỦ DÒNG KẾ HOẠCH THEO DANH SÁCH ID ====================
+// Dùng cho trang chi tiết Nhắc việc (Kế hoạch cá nhân / Kế hoạch phòng) để hiển thị bằng đúng card
+// KeHoachBaoCaoItemCard (có menu thao tác như màn Cá nhân). Chỉ trả về dòng người xem được thấy:
+// dòng CÁ NHÂN của chính mình, hoặc dòng PHÒNG của phòng mình — giống getKeHoachCaNhan /
+// getKeHoachPhong. Giữ đúng thứ tự ids truyền vào.
+export async function getKeHoachTheoIds(ids: number[]): Promise<KeHoachRow[]> {
+  const user = await requireSession();
+  const dsId = Array.from(new Set(ids.filter((n) => Number.isInteger(n) && n > 0))).slice(0, 2000);
+  if (dsId.length === 0) return [];
+
+  const rows = await prisma.keHoachTuan.findMany({
+    where: {
+      id: { in: dsId },
+      isDeleted: false,
+      OR: [
+        { laCuaCaNhan: true, maNV: user.maNV },
+        { laCuaPhong: true, maPhong: user.maPhong },
+      ],
+    },
+    include: KE_HOACH_INCLUDE,
+  });
+
+  const theoId = new Map(rows.map((r) => [r.id, mapRow(r)]));
+  return dsId.map((id) => theoId.get(id)).filter((r): r is KeHoachRow => !!r);
+}

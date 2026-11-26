@@ -1,8 +1,7 @@
 // ĐÍCH: src/components/nhac-viec/NhiemVuCuaToiSection.tsx
 "use client";
-import { useEffect, useState } from "react";
 import ChiSoLink from "./ChiSoLink";
-import { getTongQuanNhiemVuXuLyChinh, getTongQuanNhiemVuPhoiHop, type TongQuanXuLyChinh, type TongQuanPhoiHop } from "@/lib/nhac-viec/nhiem-vu";
+import type { TongQuanXuLyChinh, TongQuanPhoiHop } from "@/lib/nhac-viec/nhiem-vu";
 
 function hrefXuLyChinh(tt: string) {
   return `/nhac-viec/chi-tiet?nguon=nhiemvu&phamvi=canhan&vaitro=xulychinh&tinhtrang=${tt}`;
@@ -11,15 +10,14 @@ function hrefPhoiHop(tt: string) {
   return `/nhac-viec/chi-tiet?nguon=nhiemvu&phamvi=canhan&vaitro=phoihop&tinhtrang=${tt}`;
 }
 
-export default function NhiemVuCuaToiSection() {
-  const [xlc, setXlc] = useState<TongQuanXuLyChinh | null>(null);
-  const [ph, setPh] = useState<TongQuanPhoiHop | null>(null);
-
-  useEffect(() => {
-    getTongQuanNhiemVuXuLyChinh().then(setXlc);
-    getTongQuanNhiemVuPhoiHop().then(setPh);
-  }, []);
-
+// Số liệu do TrangNhacViec tải 1 lần cho cả trang rồi truyền xuống (null: đang tải).
+export default function NhiemVuCuaToiSection({
+  xlc,
+  ph,
+}: {
+  xlc: TongQuanXuLyChinh | null;
+  ph: TongQuanPhoiHop | null;
+}) {
   return (
     <section className="space-y-4">
       <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Nhiệm vụ của tôi</p>
