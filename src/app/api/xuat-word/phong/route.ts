@@ -60,9 +60,16 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
-  if (!session.isAdmin && session.quyen !== "LANHDAOPHONG") {
+  if (
+    !session.isAdmin &&
+    session.quyen !== "LANHDAOPHONG" &&
+    session.quyen !== "LANHDAODONVI"
+  ) {
     return NextResponse.json(
-      { error: "Chỉ Lãnh đạo phòng hoặc Admin mới được xuất theo danh sách đã biên tập" },
+      {
+        error:
+          "Chỉ Lãnh đạo phòng, Lãnh đạo đơn vị hoặc Admin mới được xuất theo danh sách đã biên tập",
+      },
       { status: 403 }
     );
   }
