@@ -1,16 +1,16 @@
 // ĐÍCH: src/components/nhac-viec/QuanLyNhiemVuSection.tsx
 "use client";
-import { useEffect, useState } from "react";
 import ChiSoLink from "./ChiSoLink";
-import { getTongQuanQuanLyNhiemVu, type TongQuanXuLyChinh } from "@/lib/nhac-viec/nhiem-vu";
+import type { TongQuanXuLyChinh } from "@/lib/nhac-viec/nhiem-vu";
 
-export default function QuanLyNhiemVuSection({ phamvi }: { phamvi: "phong" | "coquan" }) {
-  const [tk, setTk] = useState<TongQuanXuLyChinh | null>(null);
-
-  useEffect(() => {
-    getTongQuanQuanLyNhiemVu(phamvi).then(setTk);
-  }, [phamvi]);
-
+// Số liệu do TrangNhacViec tải 1 lần cho cả trang rồi truyền xuống (tk=null: đang tải).
+export default function QuanLyNhiemVuSection({
+  phamvi,
+  tk,
+}: {
+  phamvi: "phong" | "coquan";
+  tk: TongQuanXuLyChinh | null;
+}) {
   function href(tt: string) {
     return `/nhac-viec/chi-tiet?nguon=nhiemvu&phamvi=${phamvi}&tinhtrang=${tt}`;
   }

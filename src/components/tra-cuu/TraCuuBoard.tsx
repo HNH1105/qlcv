@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LoaiGhiNhan } from "@prisma/client";
 import { getCurrentWeekInfo, getWeekDateRangeLabel, formatDateVN } from "@/lib/week";
 import { traCuuKeHoachBaoCao, type TraCuuRow } from "@/lib/actions/tra-cuu";
@@ -49,15 +49,24 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
   const [maPhongFilter, setMaPhongFilter] = useState<string>("TATCA");
   const [xuLyFilter, setXuLyFilter] = useState<XuLyFilter>("tatCa");
   const [phongList, setPhongList] = useState<Phong[]>([]);
-  const [rows, setRows] = useState<TraCuuRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // [SỬA LỖI] Dữ liệu được GẮN KHOÁ theo đúng bộ lọc đã dùng để tải (loại/tuần/tab/phòng). Trước
+  // đây rows là 1 mảng chung: bấm sang tab "Phòng" thì màn hình vẫn vẽ lại DỮ LIỆU CÁ NHÂN cũ theo
+  // bố cục tab Phòng trong lúc chờ tải (các mục cá nhân hiện lên rồi biến mất); đổi tab/tuần nhanh
+  // thì kết quả của lần tải cũ về sau còn có thể ghi đè kết quả mới. Giờ chỉ hiển thị dữ liệu khi
+  // khoá khớp bộ lọc hiện tại, còn lại hiện "Đang tải...", và bỏ qua kết quả trả về trễ.
+  const khoaDuLieu = `${loai}|${nam}|${tuan}|${tab}|${maPhongFilter}`;
+  const [duLieu, setDuLieu] = useState<{ khoa: string; rows: TraCuuRow[] } | null>(null);
+  const isLoading = duLieu?.khoa !== khoaDuLieu;
+  const rows = useMemo(() => (isLoading ? [] : duLieu!.rows), [isLoading, duLieu]);
   const [isExporting, setIsExporting] = useState(false);
 
   // [MỚI] Biên tập trước khi xuất Word — chỉ LĐ phòng + Admin. Lựa chọn giữ trong state của board,
   // tách theo từng (tuần, phòng đang lọc): đóng/mở lại giao diện biên tập vẫn còn, chỉ mất khi F5.
   // Không ghi gì vào DB.
   const user = useAuth();
-  const coQuyenBienTap = !!user && (user.isAdmin || user.quyen === "LANHDAOPHONG");
+  const coQuyenBienTap =
+    !!user &&
+    (user.isAdmin || user.quyen === "LANHDAOPHONG" || user.quyen === "LANHDAODONVI");
   const [isBienTapOpen, setIsBienTapOpen] = useState(false);
   const [bienTapTheoKhoa, setBienTapTheoKhoa] = useState<Record<string, BienTapOverrides>>({});
   const khoaBienTap = `${nam}|${tuan}|${maPhongFilter}`;
@@ -68,8 +77,10 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
     getPhongList().then(setPhongList);
   }, []);
 
-  const reload = useCallback(() => {
-    setIsLoading(true);
+  useEffect(() => {
+    // conHieuLuc=false khi bộ lọc đổi tiếp trước lúc lần tải này xong -> bỏ qua kết quả cũ.
+    let conHieuLuc = true;
+    const khoa = khoaDuLieu;
     traCuuKeHoachBaoCao({
       nam,
       tuan,
@@ -77,15 +88,19 @@ function Content({ loai }: { loai: LoaiGhiNhan }) {
       phamVi: tab,
       maPhong: maPhongFilter === "TATCA" ? undefined : maPhongFilter,
     })
-      .then(setRows)
-      .catch((e) => show("error", "Không tải được dữ liệu", e instanceof Error ? e.message : "Có lỗi xảy ra"))
-      .finally(() => setIsLoading(false));
+      .then((data) => {
+        if (conHieuLuc) setDuLieu({ khoa, rows: data });
+      })
+      .catch((e) => {
+        if (!conHieuLuc) return;
+        setDuLieu({ khoa, rows: [] }); // tắt "Đang tải..." dù lỗi
+        show("error", "Không tải được dữ liệu", e instanceof Error ? e.message : "Có lỗi xảy ra");
+      });
+    return () => {
+      conHieuLuc = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nam, tuan, loai, tab, maPhongFilter]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  }, [khoaDuLieu]);
 
   // Áp bộ lọc Đã/Chưa xử lý TRƯỚC khi gom nhóm theo phòng — chỉ có tác dụng với Kế hoạch.
   const filteredRows = useMemo(() => {

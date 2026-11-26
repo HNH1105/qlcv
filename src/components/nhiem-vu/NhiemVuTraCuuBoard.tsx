@@ -22,31 +22,64 @@ export default function NhiemVuTraCuuBoard() {
   const [dsNhanVien, setDsNhanVien] = useState<NhanVien[]>([]);
   const [pageSize, setPageSize] = useState(10);
 
-  const [tuNgay, setTuNgay] = useState("");
-  const [denNgay, setDenNgay] = useState("");
-  const [theoLoaiNgay, setTheoLoaiNgay] = useState<"ngayGiao" | "hanXuLy">("hanXuLy");
+  // [MẶC ĐỊNH NHẸ] Mở trang chỉ tải nhiệm vụ ĐANG XỬ LÝ, GIAO TRONG NĂM HIỆN TẠI (theo ngày giao,
+  // 01/01 -> 31/12 năm nay theo giờ máy người dùng) thay vì toàn bộ dữ liệu. Muốn xem rộng hơn: chọn
+  // Trạng thái "Tất cả" và/hoặc bấm "Xoá lọc ngày".
+  const namHienTai = new Date().getFullYear();
+  const [tuNgay, setTuNgay] = useState(`${namHienTai}-01-01`);
+  const [denNgay, setDenNgay] = useState(`${namHienTai}-12-31`);
+  const [theoLoaiNgay, setTheoLoaiNgay] = useState<"ngayGiao" | "hanXuLy">("ngayGiao");
+  // Đổi key để dựng lại 2 ô chọn ngày khi bấm "Xoá lọc ngày" (flatpickr không tự xoá ô nhập).
+  const [lanXoaNgay, setLanXoaNgay] = useState(0);
   const [phongChuTriId, setPhongChuTriId] = useState("");
   const [nguoiXuLyChinhId, setNguoiXuLyChinhId] = useState("");
-  const [trangThai, setTrangThai] = useState<TrangThaiNhiemVu | "">("");
+  const [trangThai, setTrangThai] = useState<TrangThaiNhiemVu | "">("DANGXULY");
   const [mucDoUuTien, setMucDoUuTien] = useState<MucDoUuTien | "">("");
+  // Ô từ khoá: tuKhoaNhap đổi theo từng phím gõ; tuKhoa (dùng để tìm) chỉ cập nhật sau khi NGỪNG GÕ
+  // 400ms — tránh mỗi phím gõ là 1 lần truy vấn database.
+  const [tuKhoaNhap, setTuKhoaNhap] = useState("");
   const [tuKhoa, setTuKhoa] = useState("");
   const [chiQuaHan, setChiQuaHan] = useState(false);
-  const [trang, setTrang] = useState(1);
 
-  const [rows, setRows] = useState<NhiemVuRow[]>([]);
-  const [tongSo, setTongSo] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setTuKhoa(tuKhoaNhap.trim()), 400);
+    return () => clearTimeout(t);
+  }, [tuKhoaNhap]);
+
+  // Khoá bộ lọc (không gồm trang). Đổi bộ lọc -> tự về trang 1 NGAY trong cùng lần render (trước
+  // đây dùng 1 useEffect setTrang(1) nên đang ở trang 3 mà đổi bộ lọc sẽ truy vấn 2 lần).
+  const khoaBoLoc = JSON.stringify([tuNgay, denNgay, theoLoaiNgay, phongChuTriId, nguoiXuLyChinhId, trangThai, mucDoUuTien, tuKhoa, chiQuaHan, pageSize]);
+  const [trangTheoBoLoc, setTrangTheoBoLoc] = useState({ khoa: khoaBoLoc, trang: 1 });
+  const trang = trangTheoBoLoc.khoa === khoaBoLoc ? trangTheoBoLoc.trang : 1;
+  const setTrang = (t: number) => setTrangTheoBoLoc({ khoa: khoaBoLoc, trang: t });
+
+  // Kết quả gắn khoá (bộ lọc + trang) đã dùng để tải: chỉ hiển thị khi khớp, còn lại "Đang tải...";
+  // kết quả của lần tải cũ về trễ bị bỏ qua (không ghi đè kết quả mới).
+  const khoaTai = `${khoaBoLoc}|${trang}`;
+  const [ketQua, setKetQua] = useState<{ khoa: string; rows: NhiemVuRow[]; tongSo: number } | null>(null);
+  const isLoading = ketQua?.khoa !== khoaTai;
+  const rows = isLoading ? [] : ketQua!.rows;
+  const tongSo = isLoading ? 0 : ketQua!.tongSo;
+
+  // Handler ổn định cho DatePicker — component này dựng lại flatpickr mỗi khi onChange đổi tham
+  // chiếu, nên không truyền hàm viết tại chỗ (mỗi lần render lại dựng lại lịch).
+  const onChonTuNgay = useCallback((_d: Date[], dateStr: string) => setTuNgay(dateStr), []);
+  const onChonDenNgay = useCallback((_d: Date[], dateStr: string) => setDenNgay(dateStr), []);
 
   useEffect(() => {
     getPhongList().then(setDsPhong);
     getNhanVienList().then((l) => setDsNhanVien(l as unknown as NhanVien[]));
   }, []);
 
-  const timKiem = useCallback(() => {
-    setIsLoading(true);
+  useEffect(() => {
+    let conHieuLuc = true;
+    const khoa = khoaTai;
     traCuuNhiemVu({
-      tuNgay: tuNgay ? new Date(tuNgay) : undefined,
-      denNgay: denNgay ? new Date(denNgay) : undefined,
+      // Tính theo GIỜ MÁY NGƯỜI DÙNG và lấy TRỌN NGÀY: từ 00:00 ngày bắt đầu đến 23:59:59 ngày kết
+      // thúc (trước đây new Date("yyyy-mm-dd") = 00:00 giờ UTC, làm rơi mất các nhiệm vụ giao trong
+      // ngày cuối của khoảng lọc).
+      tuNgay: tuNgay ? new Date(`${tuNgay}T00:00:00`) : undefined,
+      denNgay: denNgay ? new Date(`${denNgay}T23:59:59.999`) : undefined,
       theoLoaiNgay,
       phongChuTriId: phongChuTriId || undefined,
       nguoiXuLyChinhId: nguoiXuLyChinhId || undefined,
@@ -58,21 +91,16 @@ export default function NhiemVuTraCuuBoard() {
       soDongMoiTrang: pageSize,
     })
       .then((res) => {
-        setRows(res.rows);
-        setTongSo(res.tongSo);
+        if (conHieuLuc) setKetQua({ khoa, rows: res.rows, tongSo: res.tongSo });
       })
-      .finally(() => setIsLoading(false));
-  }, [tuNgay, denNgay, theoLoaiNgay, phongChuTriId, nguoiXuLyChinhId, trangThai, mucDoUuTien, tuKhoa, chiQuaHan, trang, pageSize]);
-
-  useEffect(() => {
-    timKiem();
-  }, [timKiem]);
-
-  // Đổi bất kỳ điều kiện lọc nào (hoặc đổi số bản ghi/trang) -> quay về trang 1, TRỪ khi tự đổi trang.
-  useEffect(() => {
-    setTrang(1);
+      .catch(() => {
+        if (conHieuLuc) setKetQua({ khoa, rows: [], tongSo: 0 });
+      });
+    return () => {
+      conHieuLuc = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tuNgay, denNgay, theoLoaiNgay, phongChuTriId, nguoiXuLyChinhId, trangThai, mucDoUuTien, tuKhoa, chiQuaHan, pageSize]);
+  }, [khoaTai]);
 
   const tongSoTrang = Math.max(1, Math.ceil(tongSo / pageSize));
   const dsXuLyChinhTheoPhong = phongChuTriId ? dsNhanVien.filter((nv) => nv.maPhong === phongChuTriId) : dsNhanVien;
@@ -101,21 +129,36 @@ export default function NhiemVuTraCuuBoard() {
 
           <div>
             <DatePicker
+              key={`tu-${lanXoaNgay}`}
               id="tra-cuu-tu-ngay"
               label="Từ ngày"
               placeholder="Chọn ngày..."
               defaultDate={tuNgay || undefined}
-              onChange={(_dates: Date[], dateStr: string) => setTuNgay(dateStr)}
+              onChange={onChonTuNgay}
             />
           </div>
           <div>
             <DatePicker
+              key={`den-${lanXoaNgay}`}
               id="tra-cuu-den-ngay"
               label="Đến ngày"
               placeholder="Chọn ngày..."
               defaultDate={denNgay || undefined}
-              onChange={(_dates: Date[], dateStr: string) => setDenNgay(dateStr)}
+              onChange={onChonDenNgay}
             />
+            {(tuNgay || denNgay) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTuNgay("");
+                  setDenNgay("");
+                  setLanXoaNgay((n) => n + 1);
+                }}
+                className="mt-1 text-xs text-brand-500 hover:underline"
+              >
+                Xoá lọc ngày
+              </button>
+            )}
           </div>
 
           <SelectField
@@ -167,8 +210,8 @@ export default function NhiemVuTraCuuBoard() {
           <div>
             <label className="mb-1 block text-xs text-gray-500">Từ khoá</label>
             <input
-              value={tuKhoa}
-              onChange={(e) => setTuKhoa(e.target.value)}
+              value={tuKhoaNhap}
+              onChange={(e) => setTuKhoaNhap(e.target.value)}
               placeholder="Tiêu đề, nội dung..."
               className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />

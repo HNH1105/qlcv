@@ -110,8 +110,14 @@ export async function getDuLieuBienTapXuatWord(params: {
   maPhong?: string; // undefined = tất cả các phòng
 }): Promise<BienTapRow[]> {
   const session = await requireSession();
-  if (!session.isAdmin && session.quyen !== "LANHDAOPHONG") {
-    throw new Error("Chỉ Lãnh đạo phòng hoặc Admin mới được biên tập trước khi xuất Word");
+  if (
+    !session.isAdmin &&
+    session.quyen !== "LANHDAOPHONG" &&
+    session.quyen !== "LANHDAODONVI"
+  ) {
+    throw new Error(
+      "Chỉ Lãnh đạo phòng, Lãnh đạo đơn vị hoặc Admin mới được biên tập trước khi xuất Word"
+    );
   }
   const { nam, tuan, loai, maPhong } = params;
 
